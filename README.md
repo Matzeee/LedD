@@ -1,6 +1,6 @@
 # LedD
 
-LedD is a daemon for interfacing LED stripes written in python3. It provides an abstract interface for effects to control any kind of LED stripe through an controller, as although it is intented to be used with the PCA9685 chip. An Android application can connect and natively change any settings for the effects and stripes.
+LedD is a daemon for interfacing LED stripes written in python3. It provides an abstract interface for effects to control any kind of LED stripe through an controller, although it is intented to be used with the PCA9685 chip. An Android application can connect and natively change any settings for the effects and stripes.
 
 ## Goals
 
