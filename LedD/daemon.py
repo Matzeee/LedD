@@ -19,9 +19,10 @@ import socket
 import configparser
 import json
 import sqlite3
-from . import controller
 import os
 import sys
+
+from . import controller
 
 
 class Daemon:
@@ -46,7 +47,7 @@ class Daemon:
 
             self.sqldb.commit()
 
-            self.controller = controller.Controller.from_db(sqldb)
+            self.controller = controller.Controller.from_db(self.sqldb)
             print(self.controller)
 
             server = self.SocketServer(self.config.get(self.daemonSection, 'host', fallback='0.0.0.0'),
@@ -60,11 +61,9 @@ class Daemon:
     def check_db(self):
         c = self.sqldb.cursor()
         try:
-            c.execute("SELECT db_version FROM meta")
+            c.execute("SELECT value FROM meta WHERE option = 'db_version'")
             db_version = c.fetchone()
             c.close()
-
-            print(db_version)
 
             if db_version is not None:
                 print("DB connection established; version={}".format(db_version[0]))
@@ -124,4 +123,3 @@ class Daemon:
                 sock, addr = pair
                 print('Incoming connection from %s' % repr(addr))
                 handler = Daemon.ConnectionHandler(sock)
-
