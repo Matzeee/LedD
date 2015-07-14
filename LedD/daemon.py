@@ -90,9 +90,10 @@ class Daemon:
         def handle_read(self):
             data = self.recv(5120)
             if data:
+                print(data)
                 try:
-                    json.dumps(data, sort_keys=True, indent=4, separators=(',', ': '))
-                    json_decoded = json.loads(data)
+                    json_decoded = json.loads(data.decode())
+                    print(json.dumps(json_decoded, sort_keys=True, indent=4, separators=(',', ': ')))
 
                     if "action" in json_decoded:
                         if json_decoded['action'] == "set_color":
@@ -104,10 +105,11 @@ class Daemon:
                         elif json_decoded['action'] == "get_color":
                             # TODO: add stripe color get logic
                             print("recieved action: {}".format(json_decoded['action']))
-                except TypeError:
-                    print("No JSON found!")
-                else:
-                    print("no action found, ignoring")
+                    else:
+                        print("no action found, ignoring")
+                except (TypeError, ValueError):
+                    print("No valid JSON found!")
+
 
     class SocketServer(asyncore.dispatcher):
         def __init__(self, host, port):

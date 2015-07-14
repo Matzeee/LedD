@@ -1,3 +1,25 @@
+import smbus
+
+PCA9685_SUBADR1 = 0x2
+PCA9685_SUBADR2 = 0x3
+PCA9685_SUBADR3 = 0x4
+
+PCA9685_MODE1 = 0x00
+PCA9685_MODE2 = 0x01
+PCA9685_PRESCALE = 0xFE
+PCA9685_RESET = 0xFE
+
+LED0_ON_L = 0x06
+LED0_ON_H = 0x07
+LED0_OFF_L = 0x08
+LED0_OFF_H = 0x09
+
+ALLLED_ON_L = 0xFA
+ALLLED_ON_H = 0xFB
+ALLLED_OFF_L = 0xFC
+ALLLED_OFF_H = 0xFD
+
+
 class Controller:
     """
     A controller controls a number of stripes.
@@ -22,6 +44,7 @@ class Controller:
         self.pwm_freq = pwm_freq
         self.channels = channels
         self.i2c_device = i2c_device
+        self.bus = smbus.SMBus(i2c_device)
         self.address = address
         self.id = cid
         self.db = db
@@ -35,6 +58,13 @@ class Controller:
 
     def __repr__(self):
         return "<Controller stripes={} cid={}>".format(len(self.stripes), self.id)
+
+    def set_channel(self, channel, val):
+        self.bus.write_word_data(self.address, LED0_OFF_L + 4 * channel, val*4095)
+        self.bus.write_word_data(self.address, LED0_ON_L + 4 * channel, 0)
+
+    def get_channel(self, channel):
+        return self.bus.read_word_data(self.address, LED0_OFF_L + 4 * channel)
 
 
 class Stripe:
