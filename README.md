@@ -1,9 +1,6 @@
 # LedD
-LEDD Daemon in Python3
 
-## What is LedD?
-
-LedD is a daemon for interfacing LED stripes. It provides an abstract interface for effects to control any kind of LED stripe through an adapter (a driver). An Android application can connect and natively change any settings for the effects.
+LedD is a daemon for interfacing LED stripes written in python3. It provides an abstract interface for effects to control any kind of LED stripe through an controller, as although it is intented to be used with the PCA9685 chip. An Android application can connect and natively change any settings for the effects and stripes.
 
 ## Goals
 
