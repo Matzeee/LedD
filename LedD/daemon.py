@@ -20,40 +20,72 @@ import configparser
 import json
 import sqlite3
 from . import controller
+import os
+import sys
+
 
 class Daemon:
     daemonSection = 'daemon'
     databaseSection = 'db'
-    instance = None
 
     def __init__(self):
-        Daemon.instance = self
         config = configparser.ConfigParser()
         try:
-            with open('ledd.config', 'w+') as f:
-                config.read_file(f)
-        except FileNotFoundError:
-            print("no config file found!")
+            self.config = configparser.ConfigParser()
+            try:
+                with open('ledd.config', 'w+') as f:
+                    self.config.read_file(f)
+            except FileNotFoundError:
+                print("no config file found!")
 
-        sqldb = sqlite3.connect(config.get(self.databaseSection, 'name', fallback='ledd.sqlite'))
+            self.sqldb = sqlite3.connect(self.config.get(self.databaseSection, 'name', fallback='ledd.sqlite'))
+	    sqldb.row_factory = sqlite3.Row
+
+            if not self.check_db():
+                self.init_db()
+
+            self.sqldb.commit()
+
+            self.controller = controller.Controller.from_db(sqldb)
+            print(self.controller)
+
+            server = self.SocketServer(self.config.get(self.daemonSection, 'host', fallback='0.0.0.0'),
+                                       self.config.get(self.daemonSection, 'port', fallback=1425))
+            asyncore.loop()
+        except (KeyboardInterrupt, SystemExit):
+            print("\nShutting down...")
+            self.sqldb.close()
+            sys.exit(0)
+
+    def check_db(self):
+        c = self.sqldb.cursor()
+        try:
+            c.execute("SELECT db_version FROM meta")
+            db_version = c.fetchone()
+            c.close()
+
+            print(db_version)
+
+            if db_version is not None:
+                print("DB connection established; version={}".format(db_version[0]))
+                return True
+            else:
+                return False
+        except sqlite3.OperationalError:
+            c.close()
+            return False
+
+    def init_db(self):
+        self.sqldb.close()
+        if os.path.exists("ledd.sqlite"):
+            os.remove("ledd.sqlite")
+        self.sqldb = sqlite3.connect(self.config.get(self.databaseSection, 'name', fallback='ledd.sqlite'))
         sqldb.row_factory = sqlite3.Row
-        c = sqldb.cursor()
-        c.execute("SELECT db_version FROM meta")
-        db_version = c.fetchone()
-
-        if db_version:
-            print("DB connection established; version={}".format(db_version[0]))
-        else:
-            with open("LedD/sql/ledd.sql", "r") as sqlfile:
-                c.executescript(sqlfile.read())
-                sqldb.commit()
-        c.close()
-
-        self.controller = controller.Controller.from_db(sqldb)
-        print(self.controller)
-        server = self.SocketServer(config.get(self.daemonSection, 'host', fallback='0.0.0.0'),
-                                   config.get(self.daemonSection, 'port', fallback=1425))
-        # asyncore.loop()
+	with open("LedD/sql/ledd.sql", "r") as sqlfile:
+            c = self.sqldb.cursor()
+            c.executescript(sqlfile.read())
+            c.close()
+        self.check_db()
 
     class ConnectionHandler(asyncore.dispatcher_with_send):
         def handle_read(self):
@@ -92,3 +124,4 @@ class Daemon:
                 sock, addr = pair
                 print('Incoming connection from %s' % repr(addr))
                 handler = Daemon.ConnectionHandler(sock)
+

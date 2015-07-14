@@ -19,4 +19,3 @@ CREATE TABLE "controller" (
 	`channels`	INTEGER,
 	`pwm_freq`	INTEGER
 );
-COMMIT;

@@ -169,3 +169,8 @@ target/
 *.exe
 *.out
 *.app
+
+# LEDD
+LedD/ledd.config
+LedD/ledd.sqlite
+
