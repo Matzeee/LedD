@@ -28,8 +28,10 @@ from . import controller
 class Daemon:
     daemonSection = 'daemon'
     databaseSection = 'db'
+    instance = None
 
     def __init__(self):
+        Daemon.instance = self
         config = configparser.ConfigParser()
         try:
             self.config = configparser.ConfigParser()
@@ -47,8 +49,8 @@ class Daemon:
 
             self.sqldb.commit()
 
-            self.controller = controller.Controller.from_db(self.sqldb)
-            print(self.controller)
+            self.controllers = controller.Controller.from_db(self.sqldb)
+            print(self.controllers)
 
             server = self.SocketServer(self.config.get(self.daemonSection, 'host', fallback='0.0.0.0'),
                                        self.config.get(self.daemonSection, 'port', fallback=1425))
@@ -105,11 +107,21 @@ class Daemon:
                         elif json_decoded['action'] == "get_color":
                             # TODO: add stripe color get logic
                             print("recieved action: {}".format(json_decoded['action']))
+                        elif json_decoded['action'] == "add_stripes":
+                            if "stripes" in json_decoded:
+                                for stripe in json_decoded['stripes']:
+                                    # TODO: add stripe here
+                                    print(len(json_decoded['stripes']))
+                        elif json_decoded['action'] == "add_controller":
+                            ncontroller = controller.Controller(self.daemon.sqldb, 0, json_decoded['channels'],
+                                                                json_decoded['i2c_dev'], json_decoded['address'])
+                            self.send(ncontroller.id)
+                            Daemon.instance.controllers.append(ncontroller)
+
                     else:
                         print("no action found, ignoring")
                 except (TypeError, ValueError):
                     print("No valid JSON found!")
-
 
     class SocketServer(asyncore.dispatcher):
         def __init__(self, host, port):

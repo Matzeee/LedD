@@ -21,8 +21,6 @@ ALLLED_OFF_L = 0xFC
 ALLLED_OFF_H = 0xFD
 
 
-
-
 class Controller:
     """
     A controller controls a number of stripes.
@@ -63,7 +61,7 @@ class Controller:
         return "<Controller stripes={} cid={}>".format(len(self.stripes), self.id)
 
     def set_channel(self, channel, val):
-        self.bus.write_word_data(self.address, LED0_OFF_L + 4 * channel, val*4095)
+        self.bus.write_word_data(self.address, LED0_OFF_L + 4 * channel, val * 4095)
         self.bus.write_word_data(self.address, LED0_ON_L + 4 * channel, 0)
 
     def get_channel(self, channel):
@@ -81,20 +79,21 @@ class Stripe:
         self.rgb = bool(rgb)
         self.channels = channels
         self._color = Color()
-        self.gamma_correct = (2.8,2.8,2.8)
+        self.gamma_correct = (2.8, 2.8, 2.8)
         self.read_color()
 
     def read_color(self):
-        self._color.rgb = [self.controller.get_channel(channel)**(1/2.8) for channel in self.channels]
+        self._color.rgb = [self.controller.get_channel(channel) ** (1 / 2.8) for channel in self.channels]
 
     @classmethod
     def from_db(cls, controller, row):
-        return cls(controller, name=row["name"], rgb=row["rgb"], channels=(row["channel_r"],row["channel_g"],row["channel_b"]))
+        return cls(controller, name=row["name"], rgb=row["rgb"],
+                   channels=(row["channel_r"], row["channel_g"], row["channel_b"]))
 
     def set_color(self, c):
         self._color = c
         for channel, gamma_correct, value in zip(self.channels, self.gamma_correct, c.rgb):
-            self.controller.set_channel(channel,value**gamma_correct)
+            self.controller.set_channel(channel, value ** gamma_correct)
 
     def get_color(self):
         return self._color
