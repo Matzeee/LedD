@@ -30,7 +30,7 @@ class Controller:
     def from_row(cls, db, row):
         # load from db
         return cls(db, pwm_freq=row["pwm_freq"], channels=row["channels"], i2c_device=row["i2c_device"],
-                   address=row["address"], cid=row["id"])
+                   address=row["address"], cid=row["id"], from_db=True)
 
     @staticmethod
     def from_db(db):
@@ -41,7 +41,15 @@ class Controller:
         cur.close()
         return l
 
-    def __init__(self, db, pwm_freq, channels, i2c_device, address, cid=-1):
+    def save_to_db(self):
+        cur = self.db.cursor()
+        if self.id == -1:
+            cur.execute("INSERT INTO controller DEFAULT VALUES")
+            self.id = cur.lastrowid
+        cur.execute("UPDATE controller SET pwm_freq=?, channels=?, i2c_device=?, address=? WHERE id = ?",
+                    (self.pwm_freq, self.channels, self.i2c_device, self.address, self.id))
+
+    def __init__(self, db, channels, i2c_device, address, pwm_freq=-1, cid=-1, from_db=False):
         self.pwm_freq = pwm_freq
         self.channels = channels
         self.i2c_device = i2c_device
@@ -51,11 +59,14 @@ class Controller:
         self.db = db
         self.stripes = []
         self.load_stripes()
+        if not from_db:
+            self.save_to_db()
 
     def load_stripes(self):
         cur = self.db.cursor()
         for stripe in cur.execute("select * from stripes where controller_id = ?", (self.id,)):
             self.stripes.append(Stripe.from_db(self, stripe))
+        cur.close()
 
     def __repr__(self):
         return "<Controller stripes={} cid={}>".format(len(self.stripes), self.id)
@@ -67,20 +78,35 @@ class Controller:
     def get_channel(self, channel):
         return self.bus.read_word_data(self.address, LED0_OFF_L + 4 * channel)
 
+    def add_stripe(self, stripe):
+        self.stripes.append(stripe)
 
 class Stripe:
     """
     A stripe is the smallest controllable unit.
     """
 
-    def __init__(self, controller, name, rgb, channels):
+    def __init__(self, controller, name, rgb, channels, sid=-1, from_db=False):
         self.controller = controller
         self.name = name
         self.rgb = bool(rgb)
         self.channels = channels
+        self.id = sid
         self._color = Color()
-        self.gamma_correct = (2.8, 2.8, 2.8)
+        self.gamma_correct = (2.8, 2.8, 2.8)  # TODO: add to DB
         self.read_color()
+        if not from_db:
+            self.save_to_db()
+
+    def save_to_db(self):
+        cur = self.controller.db.cursor()
+        if self.id == -1:
+            cur.execute("INSERT INTO stripes DEFAULT VALUES")
+            self.id = cur.lastrowid
+        cur.execute(
+            "UPDATE stripes SET channel_r = ?, channel_g = ?, channel_b = ?,controller_id = ?, name = ? WHERE id = ?",
+            self.channels + [self.controller.id, self.name, self.id])
+        cur.close()
 
     def read_color(self):
         self._color.rgb = [self.controller.get_channel(channel) ** (1 / 2.8) for channel in self.channels]
@@ -88,7 +114,7 @@ class Stripe:
     @classmethod
     def from_db(cls, controller, row):
         return cls(controller, name=row["name"], rgb=row["rgb"],
-                   channels=(row["channel_r"], row["channel_g"], row["channel_b"]))
+                   channels=(row["channel_r"], row["channel_g"], row["channel_b"]), sid=row["id"], from_db=True)
 
     def set_color(self, c):
         self._color = c
