@@ -39,7 +39,7 @@ class Daemon:
                 print("no config file found!")
 
             self.sqldb = sqlite3.connect(self.config.get(self.databaseSection, 'name', fallback='ledd.sqlite'))
-	    sqldb.row_factory = sqlite3.Row
+            self.sqldb.row_factory = sqlite3.Row
 
             if not self.check_db():
                 self.init_db()
@@ -80,8 +80,8 @@ class Daemon:
         if os.path.exists("ledd.sqlite"):
             os.remove("ledd.sqlite")
         self.sqldb = sqlite3.connect(self.config.get(self.databaseSection, 'name', fallback='ledd.sqlite'))
-        sqldb.row_factory = sqlite3.Row
-	with open("LedD/sql/ledd.sql", "r") as sqlfile:
+        self.sqldb.row_factory = sqlite3.Row
+        with open("LedD/sql/ledd.sql", "r") as sqlfile:
             c = self.sqldb.cursor()
             c.executescript(sqlfile.read())
             c.close()
