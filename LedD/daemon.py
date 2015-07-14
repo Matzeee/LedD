@@ -32,7 +32,6 @@ class Daemon:
 
     def __init__(self):
         Daemon.instance = self
-        config = configparser.ConfigParser()
         try:
             self.config = configparser.ConfigParser()
             try:
@@ -91,6 +90,7 @@ class Daemon:
     class ConnectionHandler(asyncore.dispatcher_with_send):
         def handle_read(self):
             data = self.recv(5120)
+            self.debug = True
             if data:
                 print(data)
                 try:
@@ -102,8 +102,15 @@ class Daemon:
                             # TODO: add adapter setting stripe with color here
                             print("recieved action: {}".format(json_decoded['action']))
                         elif json_decoded['action'] == "add_controller":
-                            # TODO: add controller adding logic here
                             print("recieved action: {}".format(json_decoded['action']))
+                            ncontroller = None
+                            try:
+                                ncontroller = controller.Controller(Daemon.instance.sqldb, json_decoded['channels'],
+                                                                    json_decoded['i2c_dev'], json_decoded['address'])
+                            except OSError as e:
+                                print("Error opening i2c device!")
+                            self.send("{}\n".format(ncontroller.id).encode())
+                            Daemon.instance.controllers.append(ncontroller)
                         elif json_decoded['action'] == "get_color":
                             # TODO: add stripe color get logic
                             print("recieved action: {}".format(json_decoded['action']))
@@ -112,16 +119,12 @@ class Daemon:
                                 for stripe in json_decoded['stripes']:
                                     # TODO: add stripe here
                                     print(len(json_decoded['stripes']))
-                        elif json_decoded['action'] == "add_controller":
-                            ncontroller = controller.Controller(self.daemon.sqldb, 0, json_decoded['channels'],
-                                                                json_decoded['i2c_dev'], json_decoded['address'])
-                            self.send(ncontroller.id)
-                            Daemon.instance.controllers.append(ncontroller)
-
                     else:
                         print("no action found, ignoring")
-                except (TypeError, ValueError):
-                    print("No valid JSON found!")
+                except TypeError as e:
+                    print("No valid JSON found: {}".format(e))
+                except ValueError:
+                    print("No valid JSON detected!")
 
     class SocketServer(asyncore.dispatcher):
         def __init__(self, host, port):

@@ -15,7 +15,7 @@ INSERT INTO `meta` VALUES ('db_version','1');
 CREATE TABLE "controller" (
 	`id`	INTEGER PRIMARY KEY AUTOINCREMENT UNIQUE,
 	`address`	TEXT,
-	`i2c_device`	TEXT,
+	`i2c_device`	INTEGER,
 	`channels`	INTEGER,
 	`pwm_freq`	INTEGER
 );

@@ -48,6 +48,8 @@ class Controller:
             self.id = cur.lastrowid
         cur.execute("UPDATE controller SET pwm_freq=?, channels=?, i2c_device=?, address=? WHERE id = ?",
                     (self.pwm_freq, self.channels, self.i2c_device, self.address, self.id))
+        cur.close()
+        self.db.commit()
 
     def __init__(self, db, channels, i2c_device, address, pwm_freq=-1, cid=-1, from_db=False):
         self.pwm_freq = pwm_freq
@@ -81,6 +83,7 @@ class Controller:
     def add_stripe(self, stripe):
         self.stripes.append(stripe)
 
+
 class Stripe:
     """
     A stripe is the smallest controllable unit.
@@ -107,6 +110,7 @@ class Stripe:
             "UPDATE stripes SET channel_r = ?, channel_g = ?, channel_b = ?,controller_id = ?, name = ? WHERE id = ?",
             self.channels + [self.controller.id, self.name, self.id])
         cur.close()
+        self.controller.db.commit()
 
     def read_color(self):
         self._color.rgb = [self.controller.get_channel(channel) ** (1 / 2.8) for channel in self.channels]
