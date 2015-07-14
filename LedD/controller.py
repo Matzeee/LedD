@@ -1,4 +1,5 @@
 import smbus
+from colour import Color
 
 PCA9685_SUBADR1 = 0x2
 PCA9685_SUBADR2 = 0x3
@@ -18,6 +19,8 @@ ALLLED_ON_L = 0xFA
 ALLLED_ON_H = 0xFB
 ALLLED_OFF_L = 0xFC
 ALLLED_OFF_H = 0xFD
+
+
 
 
 class Controller:
@@ -77,9 +80,23 @@ class Stripe:
         self.name = name
         self.rgb = bool(rgb)
         self.channels = channels
+        self._color = Color()
+        self.gamma_correct = (2.8,2.8,2.8)
+        self.read_color()
+
+    def read_color(self):
+        self._color.rgb = [self.controller.get_channel(channel)**(1/2.8) for channel in self.channels]
 
     @classmethod
     def from_db(cls, controller, row):
-        return cls(controller, name=row["name"], rgb=row["rgb"], channels={"r": row["channel_r"],
-                                                                           "g": row["channel_g"],
-                                                                           "b": row["channel_b"]})
+        return cls(controller, name=row["name"], rgb=row["rgb"], channels=(row["channel_r"],row["channel_g"],row["channel_b"]))
+
+    def set_color(self, c):
+        self._color = c
+        for channel, gamma_correct, value in zip(self.channels, self.gamma_correct, c.rgb):
+            self.controller.set_channel(channel,value**gamma_correct)
+
+    def get_color(self):
+        return self._color
+
+    color = property(get_color, set_color)
