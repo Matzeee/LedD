@@ -19,13 +19,15 @@ import socket
 import configparser
 import json
 import sqlite3
-
+from . import controller
 
 class Daemon:
     daemonSection = 'daemon'
     databaseSection = 'db'
+    instance = None
 
     def __init__(self):
+        Daemon.instance = self
         config = configparser.ConfigParser()
         try:
             with open('ledd.config', 'w+') as f:
@@ -34,22 +36,24 @@ class Daemon:
             print("no config file found!")
 
         sqldb = sqlite3.connect(config.get(self.databaseSection, 'name', fallback='ledd.sqlite'))
-
+        sqldb.row_factory = sqlite3.Row
         c = sqldb.cursor()
         c.execute("SELECT db_version FROM meta")
         db_version = c.fetchone()
 
         if db_version:
-            print("DB connection established; version={}".format(db_version))
+            print("DB connection established; version={}".format(db_version[0]))
         else:
-            with open("sql/ledd.sql", "r") as sqlfile:
+            with open("LedD/sql/ledd.sql", "r") as sqlfile:
                 c.executescript(sqlfile.read())
                 sqldb.commit()
         c.close()
 
+        self.controller = controller.Controller.from_db(sqldb)
+        print(self.controller)
         server = self.SocketServer(config.get(self.daemonSection, 'host', fallback='0.0.0.0'),
                                    config.get(self.daemonSection, 'port', fallback=1425))
-        asyncore.loop()
+        # asyncore.loop()
 
     class ConnectionHandler(asyncore.dispatcher_with_send):
         def handle_read(self):
@@ -88,7 +92,3 @@ class Daemon:
                 sock, addr = pair
                 print('Incoming connection from %s' % repr(addr))
                 handler = Daemon.ConnectionHandler(sock)
-
-
-if __name__ == "__main__":
-    daemon = Daemon()
