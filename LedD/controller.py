@@ -44,9 +44,11 @@ class Controller:
     def save_to_db(self):
         cur = self.db.cursor()
         if self.id == -1:
-            cur.execute("INSERT INTO controller DEFAULT VALUES")
+            cur.execute("INSERT INTO controller (pwm_freq, channels, i2c_device, address) VALUES ()",
+                        (self.pwm_freq, self.channels, self.i2c_device, self.address))
             self.id = cur.lastrowid
-        cur.execute("UPDATE controller SET pwm_freq=?, channels=?, i2c_device=?, address=? WHERE id = ?",
+        else:
+            cur.execute("UPDATE controller SET pwm_freq=?, channels=?, i2c_device=?, address=? WHERE id = ?",
                     (self.pwm_freq, self.channels, self.i2c_device, self.address, self.id))
         cur.close()
         self.db.commit()

@@ -21,7 +21,7 @@ import json
 import sqlite3
 import os
 import sys
-
+import traceback
 from . import controller
 
 
@@ -60,6 +60,11 @@ class Daemon:
             sys.exit(0)
 
     def check_db(self):
+        """
+        Checks database version
+        :return: database validity
+        :rtype: bool
+        """
         c = self.sqldb.cursor()
         try:
             c.execute("SELECT value FROM meta WHERE option = 'db_version'")
@@ -125,6 +130,7 @@ class Daemon:
                     print("No valid JSON found: {}".format(e))
                 except ValueError:
                     print("No valid JSON detected!")
+                    traceback.print_exc(file=sys.stdout)
 
     class SocketServer(asyncore.dispatcher):
         def __init__(self, host, port):
