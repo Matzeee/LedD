@@ -1,5 +1,8 @@
+from json import JSONEncoder
+
 import smbus
 from colour import Color
+
 
 PCA9685_SUBADR1 = 0x2
 PCA9685_SUBADR2 = 0x3
@@ -44,12 +47,12 @@ class Controller:
     def save_to_db(self):
         cur = self.db.cursor()
         if self.id == -1:
-            cur.execute("INSERT INTO controller (pwm_freq, channels, i2c_device, address) VALUES ()",
+            cur.execute("INSERT INTO controller (pwm_freq, channels, i2c_device, address) VALUES (?,?,?,?)",
                         (self.pwm_freq, self.channels, self.i2c_device, self.address))
             self.id = cur.lastrowid
         else:
             cur.execute("UPDATE controller SET pwm_freq=?, channels=?, i2c_device=?, address=? WHERE id = ?",
-                    (self.pwm_freq, self.channels, self.i2c_device, self.address, self.id))
+                        (self.pwm_freq, self.channels, self.i2c_device, self.address, self.id))
         cur.close()
         self.db.commit()
 
@@ -76,8 +79,9 @@ class Controller:
         return "<Controller stripes={} cid={}>".format(len(self.stripes), self.id)
 
     def set_channel(self, channel, val):
-        self.bus.write_word_data(self.address, LED0_OFF_L + 4 * channel, val * 4095)
-        self.bus.write_word_data(self.address, LED0_ON_L + 4 * channel, 0)
+        print(type(LED0_OFF_L + 4 * channel), type(val), channel, val, type(self.address))
+        self.bus.write_word_data(int(self.address, 16), LED0_OFF_L + 4 * channel, int(val * 4095))
+        self.bus.write_word_data(int(self.address, 16), LED0_ON_L + 4 * channel, 0)
 
     def get_channel(self, channel):
         return self.bus.read_word_data(self.address, LED0_OFF_L + 4 * channel)
@@ -131,3 +135,16 @@ class Stripe:
         return self._color
 
     color = property(get_color, set_color)
+
+
+class ControllerEncoder(JSONEncoder):
+    def default(self, o):
+        if isinstance(o, Controller):
+            return {
+                'id': o.id,
+                'pwm_freq': o.pwm_freq,
+                'channel': o.channels,
+                'address': o.address,
+                'stripes': o.stripes,
+                'i2c_device': o.i2c_device
+            }

@@ -22,6 +22,8 @@ import sqlite3
 import os
 import sys
 import traceback
+import time
+
 from . import controller
 
 
@@ -104,6 +106,7 @@ class Daemon:
 
                     if "action" in json_decoded:
                         if json_decoded['action'] == "set_color":
+
                             # TODO: add adapter setting stripe with color here
                             print("recieved action: {}".format(json_decoded['action']))
                         elif json_decoded['action'] == "add_controller":
@@ -112,8 +115,9 @@ class Daemon:
                             try:
                                 ncontroller = controller.Controller(Daemon.instance.sqldb, json_decoded['channels'],
                                                                     json_decoded['i2c_dev'], json_decoded['address'])
-                            except OSError as e:
+                            except OSError:
                                 print("Error opening i2c device!")
+
                             self.send("{}\n".format(ncontroller.id).encode())
                             Daemon.instance.controllers.append(ncontroller)
                         elif json_decoded['action'] == "get_color":
@@ -124,10 +128,36 @@ class Daemon:
                                 for stripe in json_decoded['stripes']:
                                     # TODO: add stripe here
                                     print(len(json_decoded['stripes']))
+                        elif json_decoded['action'] == "get_controllers":
+                            rjson = {
+                                'status': 'success',
+                                'ccount': len(Daemon.instance.controllers),
+                                'controller': Daemon.instance.controllers
+                            }
+                            self.send("{}\n".format(json.dumps(rjson, cls=controller.ControllerEncoder)).encode())
+                        elif json_decoded['action'] == "connection_check":
+                            result = next(filter(lambda x: x.id == json_decoded['id'], Daemon.instance.controllers),
+                                          None)
+                            """ :type : Controller """
+
+                            if result is not None:
+                                print("we can do it!")
+                                for i in range(result.channels):
+                                    print("set channel {}={}".format(i, "1"))
+                                    result.set_channel(i, 1)
+                                    time.sleep(2)
+                                    result.set_channel(i, 0)
+
+                            rjson = {
+                                'status': 'success'
+                            }
+
+                            self.send("{}\n".format(json.dumps(rjson, cls=controller.ControllerEncoder)).encode())
                     else:
                         print("no action found, ignoring")
                 except TypeError as e:
                     print("No valid JSON found: {}".format(e))
+                    traceback.print_exc(file=sys.stdout)
                 except ValueError:
                     print("No valid JSON detected!")
                     traceback.print_exc(file=sys.stdout)
