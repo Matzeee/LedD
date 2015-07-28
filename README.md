@@ -8,6 +8,23 @@ LedD is a daemon for interfacing LED stripes written in python3. It provides an 
 - an open effects github repository with simple download-and-run system
 - automatic enumeration of the connected controller devices, restart/reset and status querys
 
-### License
+### Plugins
+
+Plugin functionality is planned as we provide APIs for effects and plugins to use. Here are some we are going to provide if they are finished.
+
+- plugins
+    - lux sensor (TSL2591) for providing information if lights need to be turned on
+    - start/stop hook so you can switch your LED power supply
+    - planned hook points for plugins include
+        - start/stop
+        - set color (for e.g. gamma correction)
+- effects
+    - pulse
+    - fade
+    - drop
+    - blink
+    - strobe (as far as possible)
+
+#### License
 
 This project is licensed under the conditions of the GNU GPL 3.0.

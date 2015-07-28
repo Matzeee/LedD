@@ -13,3 +13,21 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+
+def add_action(actiondict):
+    """
+    Decorator used to add functions to action dict
+    :param actiondict: dict to add to
+    :type actiondict: dict
+    """
+
+    def wrap(f):
+        actiondict[f.__name__] = f
+
+        def wrapped_f(*args):
+            f(*args)
+
+        return wrapped_f
+
+    return wrap

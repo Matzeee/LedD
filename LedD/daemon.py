@@ -24,13 +24,16 @@ import sys
 import traceback
 import time
 
-from . import controller
+from LedD import controller
+from LedD.decorators import add_action
 
 
 class Daemon:
     daemonSection = 'daemon'
     databaseSection = 'db'
     instance = None
+    """:type : Daemon """
+    action_dict = {}
 
     def __init__(self):
         Daemon.instance = self
@@ -94,67 +97,142 @@ class Daemon:
             c.close()
         self.check_db()
 
+    @add_action(action_dict)
+    def set_color(self, req_json):
+        """
+        Part of the Color API. Used to set color of a stripe.
+        Required JSON parameters: stripe ID: sid; HSV values: h,s,v
+        :param req_json: dict of request json
+        """
+        # TODO: add adapter setting stripe with color here
+        print("recieved action: {}".format(req_json['action']))
+
+    @add_action(action_dict)
+    def add_controller(self, req_json):
+        """
+        Part of the Color API. Used to add a controller.
+        Required JSON parameters: channels; i2c_dev: number of i2c device (e.g. /dev/i2c-1 would be i2c_dev = 1);
+                                  address: hexdecimal address of controller on i2c bus, e.g. 0x40
+        :param req_json: dict of request json
+        """
+        print("recieved action: {}".format(req_json['action']))
+        try:
+            ncontroller = controller.Controller(Daemon.instance.sqldb, req_json['channels'],
+                                                req_json['i2c_dev'], req_json['address'])
+        except OSError as e:
+            print("Error opening i2c device!")
+            rjson = {
+                'success': False,
+                'message': "Error while opening i2c device",
+                'message_detail': os.strerror(e.errno),
+                'ref': req_json['ref']
+            }
+            return json.dumps(rjson)
+
+        self.controllers.append(ncontroller)
+
+        rjson = {
+            'success': True,
+            'cid': ncontroller.id,
+            'ref': req_json['ref']
+        }
+
+        return json.dumps(rjson)
+
+    @add_action(action_dict)
+    def get_color(self, req_json):
+        """
+        Part of the Color API. Used to get the currect color of an stripe.
+        Required JSON parameters: stripeid: sid
+        :param req_json: dict of request json
+        """
+        print("recieved action: {}".format(req_json['action']))
+        # TODO: Add get color logic
+
+    @add_action(action_dict)
+    def add_stripes(self, req_json):
+        """
+        Part of the Color API. Used to add stripes.
+        Required JSON parameters:
+        :param req_json: dict of request json
+        """
+        print("recieved action: {}".format(req_json['action']))
+        if "stripes" in req_json:
+            for stripe in req_json['stripes']:
+                # TODO: add stripe here
+                print(len(req_json['stripes']))
+
+    @add_action(action_dict)
+    def get_controllers(self, req_json):
+        """
+        Part of the Color API. Used to get all registered controllers known to the daemon.
+        Required JSON parameters: none
+        :param req_json: dict of request json
+        """
+        print("recieved action: {}".format(req_json['action']))
+
+        rjson = {
+            'success': True,
+            'ccount': len(Daemon.instance.controllers),
+            'controller': Daemon.instance.controllers,
+            'ref': req_json['ref']
+        }
+
+        return json.dumps(rjson, cls=controller.ControllerEncoder)
+
+    @add_action(action_dict)
+    def connection_check(self, req_json):
+        """
+        Part of the Color API. Used to query all channels on a specified controller.
+        Required JSON parameters: controller id: cid
+        :param req_json: dict of request json
+        """
+        print("recieved action: {}".format(req_json['action']))
+
+        result = next(filter(lambda x: x.id == req_json['cid'], self.controllers), None)
+        """ :type : Controller """
+
+        if result is not None:
+            for i in range(result.channels):
+                print("set channel {}={}".format(i, "1"))
+                result.set_channel(i, 1)
+                time.sleep(2)
+                result.set_channel(i, 0)
+
+        rjson = {
+            'success': True,
+            'ref': req_json['ref']
+        }
+
+        return json.dumps(rjson)
+
     class ConnectionHandler(asyncore.dispatcher_with_send):
         def handle_read(self):
             data = self.recv(5120)
             self.debug = True
+
+            def no_action_found(self, req_json):
+                rjson = {
+                    'success': False,
+                    'message': "No action found",
+                    'ref': req_json['ref']
+                }
+                return json.dumps(rjson)
+
             if data:
-                print(data)
                 try:
                     json_decoded = json.loads(data.decode())
                     print(json.dumps(json_decoded, sort_keys=True, indent=4, separators=(',', ': ')))
 
-                    if "action" in json_decoded:
-                        if json_decoded['action'] == "set_color":
+                    if "action" in json_decoded and "ref" in json_decoded:
+                        return_data = Daemon.instance.action_dict.get(json_decoded['action'], no_action_found)(
+                            self=Daemon.instance,
+                            req_json=json_decoded)
 
-                            # TODO: add adapter setting stripe with color here
-                            print("recieved action: {}".format(json_decoded['action']))
-                        elif json_decoded['action'] == "add_controller":
-                            print("recieved action: {}".format(json_decoded['action']))
-                            ncontroller = None
-                            try:
-                                ncontroller = controller.Controller(Daemon.instance.sqldb, json_decoded['channels'],
-                                                                    json_decoded['i2c_dev'], json_decoded['address'])
-                            except OSError:
-                                print("Error opening i2c device!")
-
-                            self.send("{}\n".format(ncontroller.id).encode())
-                            Daemon.instance.controllers.append(ncontroller)
-                        elif json_decoded['action'] == "get_color":
-                            # TODO: add stripe color get logic
-                            print("recieved action: {}".format(json_decoded['action']))
-                        elif json_decoded['action'] == "add_stripes":
-                            if "stripes" in json_decoded:
-                                for stripe in json_decoded['stripes']:
-                                    # TODO: add stripe here
-                                    print(len(json_decoded['stripes']))
-                        elif json_decoded['action'] == "get_controllers":
-                            rjson = {
-                                'status': 'success',
-                                'ccount': len(Daemon.instance.controllers),
-                                'controller': Daemon.instance.controllers
-                            }
-                            self.send("{}\n".format(json.dumps(rjson, cls=controller.ControllerEncoder)).encode())
-                        elif json_decoded['action'] == "connection_check":
-                            result = next(filter(lambda x: x.id == json_decoded['id'], Daemon.instance.controllers),
-                                          None)
-                            """ :type : Controller """
-
-                            if result is not None:
-                                print("we can do it!")
-                                for i in range(result.channels):
-                                    print("set channel {}={}".format(i, "1"))
-                                    result.set_channel(i, 1)
-                                    time.sleep(2)
-                                    result.set_channel(i, 0)
-
-                            rjson = {
-                                'status': 'success'
-                            }
-
-                            self.send("{}\n".format(json.dumps(rjson, cls=controller.ControllerEncoder)).encode())
+                        if return_data is not None:
+                            self.send("{}\n".format(return_data).encode())
                     else:
-                        print("no action found, ignoring")
+                        print("no action or ref value found, ignoring")
                 except TypeError as e:
                     print("No valid JSON found: {}".format(e))
                     traceback.print_exc(file=sys.stdout)
