@@ -23,8 +23,12 @@ import os
 import sys
 import traceback
 import time
+import logging
+from multiprocessing import Process
 
-from LedD import controller
+import nose
+
+from LedD import controller, VERSION
 from LedD.decorators import add_action
 
 
@@ -37,13 +41,16 @@ class Daemon:
 
     def __init__(self):
         Daemon.instance = self
+        logging.basicConfig(level=logging.DEBUG,
+                            format="[%(asctime)s] %(levelname)s [%(name)s.%(funcName)s:%(lineno)d] %(message)s",
+                            datefmt="%H:%M:%S")
         try:
             self.config = configparser.ConfigParser()
             try:
                 with open('ledd.config', 'w+') as f:
                     self.config.read_file(f)
             except FileNotFoundError:
-                print("no config file found!")
+                logging.info("No config file found!")
 
             self.sqldb = sqlite3.connect(self.config.get(self.databaseSection, 'name', fallback='ledd.sqlite'))
             self.sqldb.row_factory = sqlite3.Row
@@ -54,13 +61,13 @@ class Daemon:
             self.sqldb.commit()
 
             self.controllers = controller.Controller.from_db(self.sqldb)
-            print(self.controllers)
+            logging.debug(self.controllers)
 
             server = self.SocketServer(self.config.get(self.daemonSection, 'host', fallback='0.0.0.0'),
                                        self.config.get(self.daemonSection, 'port', fallback=1425))
             asyncore.loop()
         except (KeyboardInterrupt, SystemExit):
-            print("\nShutting down...")
+            logging.info("Exiting")
             self.sqldb.close()
             sys.exit(0)
 
@@ -77,7 +84,7 @@ class Daemon:
             c.close()
 
             if db_version is not None:
-                print("DB connection established; version={}".format(db_version[0]))
+                logging.info("DB connection established; db-version=%s", db_version[0])
                 return True
             else:
                 return False
@@ -105,7 +112,7 @@ class Daemon:
         :param req_json: dict of request json
         """
         # TODO: add adapter setting stripe with color here
-        print("recieved action: {}".format(req_json['action']))
+        logging.debug("recieved action: %s", req_json['action'])
 
     @add_action(action_dict)
     def add_controller(self, req_json):
@@ -115,12 +122,12 @@ class Daemon:
                                   address: hexdecimal address of controller on i2c bus, e.g. 0x40
         :param req_json: dict of request json
         """
-        print("recieved action: {}".format(req_json['action']))
+        logging.debug("recieved action: %s", req_json['action'])
         try:
             ncontroller = controller.Controller(Daemon.instance.sqldb, req_json['channels'],
                                                 req_json['i2c_dev'], req_json['address'])
         except OSError as e:
-            print("Error opening i2c device!")
+            logging.error("Error opening i2c device: %s", req_json['i2c_dev'])
             rjson = {
                 'success': False,
                 'message': "Error while opening i2c device",
@@ -146,7 +153,7 @@ class Daemon:
         Required JSON parameters: stripeid: sid
         :param req_json: dict of request json
         """
-        print("recieved action: {}".format(req_json['action']))
+        logging.debug("recieved action: %s", req_json['action'])
         # TODO: Add get color logic
 
     @add_action(action_dict)
@@ -156,11 +163,11 @@ class Daemon:
         Required JSON parameters:
         :param req_json: dict of request json
         """
-        print("recieved action: {}".format(req_json['action']))
+        logging.debug("recieved action: %s", req_json['action'])
         if "stripes" in req_json:
             for stripe in req_json['stripes']:
                 # TODO: add stripe here
-                print(len(req_json['stripes']))
+                logging.debug(len(req_json['stripes']))
 
     @add_action(action_dict)
     def get_controllers(self, req_json):
@@ -169,7 +176,7 @@ class Daemon:
         Required JSON parameters: none
         :param req_json: dict of request json
         """
-        print("recieved action: {}".format(req_json['action']))
+        logging.debug("recieved action: %s", req_json['action'])
 
         rjson = {
             'success': True,
@@ -187,21 +194,38 @@ class Daemon:
         Required JSON parameters: controller id: cid
         :param req_json: dict of request json
         """
-        print("recieved action: {}".format(req_json['action']))
+        logging.debug("recieved action: %s", req_json['action'])
 
         result = next(filter(lambda x: x.id == req_json['cid'], self.controllers), None)
         """ :type : Controller """
 
         if result is not None:
             for i in range(result.channels):
-                print("set channel {}={}".format(i, "1"))
+                logging.debug("set channel %d=%s", i, "1")
                 result.set_channel(i, 1)
-                time.sleep(2)
+                time.sleep(10)
                 result.set_channel(i, 0)
 
         rjson = {
             'success': True,
             'ref': req_json['ref']
+        }
+
+        return json.dumps(rjson)
+
+    @add_action(action_dict)
+    def discover(self, req_json):
+        """
+        Part of the Color API. Used by mobile applications to find the controller.
+        Required JSON parameters: none
+        :param req_json: dict of request json
+        """
+        logging.debug("recieved action: %s", req_json['action'])
+
+        rjson = {
+            'success': True,
+            'ref': req_json['ref'],
+            'version': VERSION
         }
 
         return json.dumps(rjson)
@@ -222,7 +246,7 @@ class Daemon:
             if data:
                 try:
                     json_decoded = json.loads(data.decode())
-                    print(json.dumps(json_decoded, sort_keys=True, indent=4, separators=(',', ': ')))
+                    logging.debug(json.dumps(json_decoded, sort_keys=True))
 
                     if "action" in json_decoded and "ref" in json_decoded:
                         return_data = Daemon.instance.action_dict.get(json_decoded['action'], no_action_found)(
@@ -232,13 +256,11 @@ class Daemon:
                         if return_data is not None:
                             self.send("{}\n".format(return_data).encode())
                     else:
-                        print("no action or ref value found, ignoring")
-                except TypeError as e:
-                    print("No valid JSON found: {}".format(e))
-                    traceback.print_exc(file=sys.stdout)
+                        logging.warning("no action or ref value found in JSON, ignoring")
+                except TypeError:
+                    logging.error("No valid JSON found: %s", traceback.format_exc())
                 except ValueError:
-                    print("No valid JSON detected!")
-                    traceback.print_exc(file=sys.stdout)
+                    logging.error("No valid JSON detected: %s", traceback.format_exc())
 
     class SocketServer(asyncore.dispatcher):
         def __init__(self, host, port):
@@ -248,9 +270,16 @@ class Daemon:
             self.bind((host, port))
             self.listen(5)
 
+            p = Process(target=self.run_tests)
+            p.start()
+
+        @staticmethod
+        def run_tests():
+            nose.run()
+
         def handle_accept(self):
             pair = self.accept()
             if pair is not None:
                 sock, addr = pair
-                print('Incoming connection from %s' % repr(addr))
+                logging.debug('Incoming connection from %s' % repr(addr))
                 handler = Daemon.ConnectionHandler(sock)

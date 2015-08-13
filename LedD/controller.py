@@ -95,7 +95,6 @@ class Controller:
         return "<Controller stripes={} cid={}>".format(len(self.stripes), self.id)
 
     def set_channel(self, channel, val):
-        print(type(LED0_OFF_L + 4 * channel), type(val), channel, val, type(self.address))
         self.bus.write_word_data(int(self.address, 16), LED0_OFF_L + 4 * channel, int(val * 4095))
         self.bus.write_word_data(int(self.address, 16), LED0_ON_L + 4 * channel, 0)
 
