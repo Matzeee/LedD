@@ -44,18 +44,18 @@ class TestDaemon:
         cls.s.close()
 
     def test_discover(self):
-        ref = uuid.uuid4()
+        ref = uuid.uuid4().urn[9:]
         sjson = {
             "action": "discover",
-            "ref": ref.urn[9:]
+            "ref": ref
         }
 
         self.s.send(json.dumps(sjson).encode())
 
-        rstr = self.s.recv(1024)
+        rstr = self.s.recv(1024).decode()
 
         assert rstr is not None
 
-        rjson = json.loads(self.s.recv(5120))
+        rjson = json.loads(rstr)
         assert rjson['ref'] == ref
         assert rjson['version'] is not None
