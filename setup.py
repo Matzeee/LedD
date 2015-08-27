@@ -14,4 +14,17 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-VERSION = "0.1"
+from setuptools import setup
+
+setup(name='LedD',
+      version='0.1',
+      description='Providing control for led stripes.',
+      url='https://github.com/LED-Freaks/LedD',
+      author='IdleGandalf, Lauch',
+      author_email='539@idlegandalf.com',
+      license='GPLv3',
+      packages=['ledd'],
+      install_requires=[
+          'nose', 'colour',
+      ],
+      zip_safe=False)

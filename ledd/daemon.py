@@ -28,8 +28,8 @@ from multiprocessing import Process
 
 import nose
 
-from LedD import controller, VERSION
-from LedD.decorators import add_action
+from ledd import controller, VERSION
+from ledd.decorators import add_action
 
 
 class Daemon:
@@ -98,7 +98,7 @@ class Daemon:
             os.remove("ledd.sqlite")
         self.sqldb = sqlite3.connect(self.config.get(self.databaseSection, 'name', fallback='ledd.sqlite'))
         self.sqldb.row_factory = sqlite3.Row
-        with open("LedD/sql/ledd.sql", "r") as sqlfile:
+        with open("ledd/sql/ledd.sql", "r") as sqlfile:
             c = self.sqldb.cursor()
             c.executescript(sqlfile.read())
             c.close()

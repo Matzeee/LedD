@@ -14,6 +14,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import logging
+
 from pkgutil import iter_modules
 
 if "smbus" not in (name for loader, name, ispkg in iter_modules()):
@@ -32,11 +34,21 @@ if "smbus" not in (name for loader, name, ispkg in iter_modules()):
         def read_word_data(self, cmd):
             return self.channels[(cmd - 8) / 4]
 
-
     import sys
 
     sys.modules['smbus'] = SMBus
-import LedD.daemon
+import ledd.daemon
 
 if __name__ == "__main__":
-    daemon = LedD.daemon.Daemon()
+    log = logging.getLogger("")
+    formatter = logging.Formatter("%(asctime)s %(levelname)s " +
+                                  "[%(module)s:%(lineno)d] %(message)s")
+    # setup console logging
+    log.setLevel(logging.DEBUG)
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.DEBUG)
+
+    ch.setFormatter(formatter)
+    log.addHandler(ch)
+
+    daemon = ledd.daemon.Daemon()
