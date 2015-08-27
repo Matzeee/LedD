@@ -34,21 +34,15 @@ if "smbus" not in (name for loader, name, ispkg in iter_modules()):
         def read_word_data(self, cmd):
             return self.channels[(cmd - 8) / 4]
 
+
     import sys
 
     sys.modules['smbus'] = SMBus
 import ledd.daemon
 
 if __name__ == "__main__":
-    log = logging.getLogger("")
-    formatter = logging.Formatter("%(asctime)s %(levelname)s " +
-                                  "[%(module)s:%(lineno)d] %(message)s")
-    # setup console logging
-    log.setLevel(logging.DEBUG)
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.DEBUG)
-
-    ch.setFormatter(formatter)
-    log.addHandler(ch)
-
+    logging.basicConfig(level=logging.DEBUG,
+                        format="[%(asctime)s] %(levelname)s [%(name)s.%(funcName)s:%(lineno)d] %(message)s",
+                        datefmt="%H:%M:%S")
+    log = logging.getLogger(__name__)
     daemon = ledd.daemon.Daemon()
