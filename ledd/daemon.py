@@ -26,6 +26,10 @@ import asyncio
 
 from ledd import controller, VERSION
 from ledd.decorators import add_action
+from multiprocessing import Process
+
+log = logging.getLogger(__name__)
+clients = {}  # task -> (reader, writer)
 
 log = logging.getLogger(__name__)
 
@@ -60,19 +64,18 @@ class Daemon:
 
             self.controllers = controller.Controller.from_db(self.sqldb)
             log.debug(self.controllers)
-
             logging.getLogger("asyncio").setLevel(logging.DEBUG)
 
             self.loop = asyncio.get_event_loop()
-            self.loop.set_debug(True)
             coro = self.loop.create_server(LedDProtocol,
                                            self.config.get(self.daemonSection, 'host', fallback='0.0.0.0'),
                                            self.config.get(self.daemonSection, 'port', fallback=1425))
-            self.loop.run_until_complete(coro)
+            server = self.loop.run_until_complete(coro)
             self.loop.run_forever()
         except (KeyboardInterrupt, SystemExit):
             log.info("Exiting")
             self.sqldb.close()
+            self.loop.run_until_complete(server.wait_closed())
             self.loop.close()
             sys.exit(0)
 
@@ -244,7 +247,7 @@ class LedDProtocol(asyncio.Protocol):
         self.transport = transport
 
     def data_received(self, data):
-        log.info("Received: %s", data.decode())
+        log.info("Received: %s\nfrom: ", data.decode(), self.transport.get_extra_info("peername"))
         self.select_task(data)
 
     def select_task(self, data):

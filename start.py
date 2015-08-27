@@ -27,17 +27,22 @@ if "smbus" not in (name for loader, name, ispkg in iter_modules()):
             self.i2c_address = i2c_address
             self.channels = {}
 
-        def write_word_data(self, cmd, val):
+        def write_word_data(self, cmd, val, *args):
             if (cmd - 6) % 4 == 0:
                 self.channels[(cmd - 6) / 4] = val
 
-        def read_word_data(self, cmd):
+        def read_word_data(self, addr, cmd, *args):
+            return 0
             return self.channels[(cmd - 8) / 4]
 
+    class SMBusModule:
+        SMBus = SMBus
 
     import sys
 
-    sys.modules['smbus'] = SMBus
+    sys.modules['smbus'] = SMBusModule
+    sys.modules['smbus'].SMBus = SMBus
+
 import ledd.daemon
 
 if __name__ == "__main__":
