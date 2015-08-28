@@ -99,7 +99,7 @@ class Controller:
         self.bus.write_word_data(int(self.address, 16), LED0_ON_L + 4 * channel, 0)
 
     def get_channel(self, channel):
-        return self.bus.read_word_data(self.address, LED0_OFF_L + 4 * channel)
+        return self.bus.read_word_data(int(self.address, 16), LED0_OFF_L + 4 * channel) / 4095
 
     def add_stripe(self, stripe):
         self.stripes.append(stripe)

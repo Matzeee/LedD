@@ -25,6 +25,6 @@ setup(name='LedD',
       license='GPLv3',
       packages=['ledd'],
       install_requires=[
-          'nose', 'colour',
+            'nose', 'spectra',
       ],
       zip_safe=False)

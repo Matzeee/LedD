@@ -24,8 +24,11 @@ import traceback
 import time
 import asyncio
 
+import spectra
+
 from ledd import controller, VERSION
 from ledd.decorators import ledd_protocol
+from ledd.stripe import Stripe
 
 log = logging.getLogger(__name__)
 
@@ -66,12 +69,13 @@ class Daemon:
             coro = self.loop.create_server(LedDProtocol,
                                            self.config.get(self.daemonSection, 'host', fallback='0.0.0.0'),
                                            self.config.get(self.daemonSection, 'port', fallback=1425))
-            server = self.loop.run_until_complete(coro)
+            self.server = self.loop.run_until_complete(coro)
             self.loop.run_forever()
         except (KeyboardInterrupt, SystemExit):
             log.info("Exiting")
             self.sqldb.close()
-            self.loop.run_until_complete(server.wait_closed())
+            self.server.close()
+            self.loop.run_until_complete(self.server.wait_closed())
             self.loop.close()
             sys.exit(0)
 
@@ -112,11 +116,28 @@ class Daemon:
     def set_color(self, req_json):
         """
         Part of the Color API. Used to set color of a stripe.
-        Required JSON parameters: stripe ID: sid; HSV values: h,s,v
+        Required JSON parameters: stripe ID: sid; HSV values hsv: h,s,v, controller id: cid
         :param req_json: dict of request json
         """
-        # TODO: add adapter setting stripe with color here
         log.debug("recieved action: %s", req_json['action'])
+
+        if "stripes" in req_json:
+            for stripe in req_json['stripes']:
+                def find_stripe():
+                    for c in self.controllers:
+                        for s in c.stripes:
+                            if s.id == stripe['sid']:
+                                return s
+
+                    return None
+
+                found_s = find_stripe()
+
+                if found_s is None:
+                    log.warning("Stripe not found: id=%s", stripe['sid'])
+                    continue
+
+                found_s.set_color(spectra.hsv(stripe['hsv']['h'], stripe['hsv']['s'], stripe['hsv']['v']))
 
     @ledd_protocol(protocol)
     def add_controller(self, req_json):
@@ -158,20 +179,47 @@ class Daemon:
         :param req_json: dict of request json
         """
         log.debug("recieved action: %s", req_json['action'])
-        # TODO: Add get color logic
+        # TODO: add get color
 
     @ledd_protocol(protocol)
     def add_stripes(self, req_json):
         """
         Part of the Color API. Used to add stripes.
-        Required JSON parameters:
+        Required JSON parameters: name; rgb: bool; map: r: r-channel, g: g-channel, b: b-channel
         :param req_json: dict of request json
         """
         log.debug("recieved action: %s", req_json['action'])
+
+        res_stripes = []
+
         if "stripes" in req_json:
             for stripe in req_json['stripes']:
+                c = next((x for x in self.controllers if x.id == stripe['cid']), None)
 
-                log.debug(len(req_json['stripes']))
+                if c is None:
+                    res_stripes.append({
+                        'success': False,
+                        'message': "Controller not found",
+                        'ref': stripe['ref']
+                    })
+                    continue
+
+                s = Stripe(c, stripe['name'], stripe['rgb'],
+                           (stripe['map']['r'], stripe['map']['g'], stripe['map']['b']))
+
+                res_stripes.append({
+                    'success': True,
+                    'sid': s.id,
+                    'ref': stripe['ref']
+                })
+
+            rjson = {
+                'success': True,
+                'stripes': res_stripes,
+                'ref': req_json['ref']
+            }
+
+            return json.dumps(rjson)
 
     @ledd_protocol(protocol)
     def get_controllers(self, req_json):
@@ -234,6 +282,14 @@ class Daemon:
 
         return json.dumps(rjson)
 
+    def no_action_found(self, req_json):
+        rjson = {
+            'success': False,
+            'message': "No action found",
+            'ref': req_json['ref']
+        }
+        return json.dumps(rjson)
+
 
 class LedDProtocol(asyncio.Protocol):
     transport = None
@@ -243,7 +299,7 @@ class LedDProtocol(asyncio.Protocol):
         self.transport = transport
 
     def data_received(self, data):
-        log.info("Received: %s\nfrom: ", data.decode(), self.transport.get_extra_info("peername"))
+        log.info("Received: %s from: %s", data.decode(), self.transport.get_extra_info("peername"))
         self.select_task(data)
 
     def select_task(self, data):
@@ -252,8 +308,8 @@ class LedDProtocol(asyncio.Protocol):
                 json_decoded = json.loads(data.decode())
 
                 if "action" in json_decoded and "ref" in json_decoded:
-                    return_data = Daemon.instance.protocol.get(json_decoded['action'], self.no_action_found)(
-                        json_decoded)
+                    return_data = Daemon.instance.protocol.get(json_decoded['action'], Daemon.no_action_found)(
+                        Daemon.instance, json_decoded)
 
                     if return_data is not None:
                         self.transport.write("{}\n".format(return_data).encode())
@@ -263,15 +319,6 @@ class LedDProtocol(asyncio.Protocol):
                 log.debug("No valid JSON found: %s", traceback.format_exc())
             except ValueError:
                 log.debug("No valid JSON detected: %s", traceback.format_exc())
-
-    @staticmethod
-    def no_action_found(req_json):
-        rjson = {
-            'success': False,
-            'message': "No action found",
-            'ref': req_json['ref']
-        }
-        return json.dumps(rjson)
 
     def connection_lost(self, exc):
         # The socket has been closed, stop the event loop

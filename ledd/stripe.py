@@ -13,8 +13,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-from colour import Color
+from spectra import Color
 
 
 class Stripe:
@@ -28,7 +27,7 @@ class Stripe:
         self.rgb = bool(rgb)
         self.channels = channels
         self.id = sid
-        self._color = Color()
+        self._color = None
         self.gamma_correct = (2.8, 2.8, 2.8)  # TODO: add to DB
         self.read_color()
         if not from_db:
@@ -41,12 +40,14 @@ class Stripe:
             self.id = cur.lastrowid
         cur.execute(
             "UPDATE stripes SET channel_r = ?, channel_g = ?, channel_b = ?,controller_id = ?, name = ? WHERE id = ?",
-            self.channels + [self.controller.id, self.name, self.id])
+            self.channels + (self.controller.id, self.name, self.id))
         cur.close()
         self.controller.db.commit()
 
     def read_color(self):
-        self._color.rgb = [self.controller.get_channel(channel) ** (1 / 2.8) for channel in self.channels]
+        rc = tuple([float(self.controller.get_channel(channel)) for channel in self.channels])
+        c = Color("rgb", rc[0], rc[1], rc[2])
+        self._color = c.to("hsv")
 
     @classmethod
     def from_db(cls, controller, row):
@@ -55,8 +56,8 @@ class Stripe:
 
     def set_color(self, c):
         self._color = c
-        for channel, gamma_correct, value in zip(self.channels, self.gamma_correct, c.rgb):
-            self.controller.set_channel(channel, value ** gamma_correct)
+        for channel, gamma_correct, value in zip(self.channels, self.gamma_correct, c.clamped_rgb):
+            self.controller.set_channel(channel, value * 255)
 
     def get_color(self):
         return self._color
