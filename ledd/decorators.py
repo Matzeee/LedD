@@ -15,7 +15,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-def add_action(actiondict):
+def ledd_protocol(proto):
     """
     Decorator used to add functions to action dict
     :param actiondict: dict to add to
@@ -23,7 +23,7 @@ def add_action(actiondict):
     """
 
     def wrap(f):
-        actiondict[f.__name__] = f
+        proto[f.__name__] = f
 
         def wrapped_f(*args):
             f(*args)

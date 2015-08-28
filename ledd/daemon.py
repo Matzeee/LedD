@@ -25,11 +25,7 @@ import time
 import asyncio
 
 from ledd import controller, VERSION
-from ledd.decorators import add_action
-from multiprocessing import Process
-
-log = logging.getLogger(__name__)
-clients = {}  # task -> (reader, writer)
+from ledd.decorators import ledd_protocol
 
 log = logging.getLogger(__name__)
 
@@ -41,7 +37,7 @@ class Daemon:
     """:type : Daemon """
     loop = None
     """ :type : asyncio.BaseEventLoop """
-    action_dict = {}
+    protocol = {}
 
     def __init__(self):
         Daemon.instance = self
@@ -112,7 +108,7 @@ class Daemon:
             c.close()
         self.check_db()
 
-    @add_action(action_dict)
+    @ledd_protocol(protocol)
     def set_color(self, req_json):
         """
         Part of the Color API. Used to set color of a stripe.
@@ -122,7 +118,7 @@ class Daemon:
         # TODO: add adapter setting stripe with color here
         log.debug("recieved action: %s", req_json['action'])
 
-    @add_action(action_dict)
+    @ledd_protocol(protocol)
     def add_controller(self, req_json):
         """
         Part of the Color API. Used to add a controller.
@@ -154,7 +150,7 @@ class Daemon:
 
         return json.dumps(rjson)
 
-    @add_action(action_dict)
+    @ledd_protocol(protocol)
     def get_color(self, req_json):
         """
         Part of the Color API. Used to get the currect color of an stripe.
@@ -164,7 +160,7 @@ class Daemon:
         log.debug("recieved action: %s", req_json['action'])
         # TODO: Add get color logic
 
-    @add_action(action_dict)
+    @ledd_protocol(protocol)
     def add_stripes(self, req_json):
         """
         Part of the Color API. Used to add stripes.
@@ -174,10 +170,10 @@ class Daemon:
         log.debug("recieved action: %s", req_json['action'])
         if "stripes" in req_json:
             for stripe in req_json['stripes']:
-                # TODO: add stripe here
+
                 log.debug(len(req_json['stripes']))
 
-    @add_action(action_dict)
+    @ledd_protocol(protocol)
     def get_controllers(self, req_json):
         """
         Part of the Color API. Used to get all registered controllers known to the daemon.
@@ -195,7 +191,7 @@ class Daemon:
 
         return json.dumps(rjson, cls=controller.ControllerEncoder)
 
-    @add_action(action_dict)
+    @ledd_protocol(protocol)
     def connection_check(self, req_json):
         """
         Part of the Color API. Used to query all channels on a specified controller.
@@ -221,7 +217,7 @@ class Daemon:
 
         return json.dumps(rjson)
 
-    @add_action(action_dict)
+    @ledd_protocol(protocol)
     def discover(self, req_json):
         """
         Part of the Color API. Used by mobile applications to find the controller.
