@@ -159,7 +159,8 @@ class Daemon:
         """
         Finds a given stripeid in the currently known controllers
         :param jstripe: json containing sid
-        :return: stripe
+        :return: stripe if found or none
+        :rtype: ledd.Stripe | None
         """
         for c in self.controllers:
             for s in c.stripes:
@@ -204,11 +205,34 @@ class Daemon:
     def get_color(self, req_json):
         """
         Part of the Color API. Used to get the currect color of an stripe.
-        Required JSON parameters: stripeid: sid
+        Required JSON parameters: stripes
         :param req_json: dict of request json
         """
         log.debug("recieved action: %s", req_json['action'])
-        # TODO: add get color
+
+        res_stripes = []
+
+        if "stripes" in req_json:
+            for stripe in req_json['stripes']:
+                found_s = self.find_stripe(stripe)
+
+                if found_s is None:
+                    log.warning("Stripe not found: id=%s", stripe['sid'])
+                    continue
+
+                res_stripes.append({
+                    'success': True,
+                    'sid': found_s.id,
+                    'color': found_s.get_color.values
+                })
+
+            rjson = {
+                'success': True,
+                'stripes': res_stripes,
+                'ref': req_json['ref']
+            }
+
+            return json.dumps(rjson)
 
     @ledd_protocol(protocol)
     def add_stripes(self, req_json):
