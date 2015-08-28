@@ -252,7 +252,7 @@ class LedDProtocol(asyncio.Protocol):
                 json_decoded = json.loads(data.decode())
 
                 if "action" in json_decoded and "ref" in json_decoded:
-                    return_data = Daemon.instance.action_dict.get(json_decoded['action'], self.no_action_found)(
+                    return_data = Daemon.instance.protocol.get(json_decoded['action'], self.no_action_found)(
                         json_decoded)
 
                     if return_data is not None:
