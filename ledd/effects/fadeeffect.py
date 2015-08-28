@@ -27,7 +27,7 @@ class FadeEffect(GeneratorEffect):
     description = "Fades through the HSV color wheel"
 
     def execute(self):
-        scale = spectra.scale([spectra.hsv(0.0, 1.0, 1.0), spectra.hsv(360, 1.0, 1.0)]).domain([0, 20000])
+        scale = spectra.scale([spectra.hsv(0.0, 1.0, 1.0), spectra.hsv(360.0, 1.0, 1.0)]).domain([0, 20000])
 
         i = 0
         while True:

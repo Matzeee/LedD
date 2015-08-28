@@ -25,7 +25,6 @@ import time
 import asyncio
 
 import spectra
-
 from zeroconf import Zeroconf, ServiceInfo
 
 from ledd import controller, VERSION
@@ -149,29 +148,71 @@ class Daemon:
     @ledd_protocol(protocol)
     def start_effect(self, req_json):
         """
-
+        Part of the Color API. Used to start a specific effect.
+        Required JSON parameters: stripe IDs: sids; effect id: eid, effect options: eopt
         :param req_json: dict of request json
         """
-        effect = EffectStack()
-        self.effects.append(effect)
-        effect.stripes.append(self.controllers[1].stripes[0])
-        effect.start()
-
-        # asyncio.ensure_future(asyncio.get_event_loop().run_in_executor(self.executor, effect.execute))
-
         log.debug("recieved action: %s", req_json['action'])
+
+        stripes = []
+
+        if "sids" in req_json:
+            for sid in req_json['sids']:
+                found_s = self.find_stripe(sid)
+
+                if found_s is not None:
+                    stripes.append(found_s)
+
+        if len(stripes) > 0:
+            # TODO: add anything required to start effect with req_json['eid']
+            # on stripes[] with options in req_json['eopt']
+            effect = EffectStack()
+            self.effects.append(effect)
+            effect.stripes.append(self.controllers[0].stripes[0])
+            effect.start()
+
+            # asyncio.ensure_future(asyncio.get_event_loop().run_in_executor(self.executor, effect.execute))
+
+            rjson = {
+                'success': True,
+                'eident': None,  # unique effect identifier that identifies excatly this effect started on this set of
+                # stripes, used to stop them later and to give informations about running effects
+                'ref': req_json['ref']
+            }
+
+            return json.dumps(rjson)
+        else:
+            rjson = {
+                'success': False,
+                'message': "No stripe with this id found",
+                'ref': req_json['ref']
+            }
+
+            return json.dumps(rjson)
 
     @ledd_protocol(protocol)
-    def start_effect(self, req_json):
+    def stop_effect(self, req_json):
         """
-
+        Part of the Color API. Used to stop a specific effect.
+        Required JSON parameters: effect identifier: eident
         :param req_json: dict of request json
         """
-        effect = BaseEffect(Stripe(),self.loop)
-        self.effects.append(effect)
-        asyncio.ensure_future(asyncio.get_event_loop().run_in_executor(self.executor, effect.execute))
-
         log.debug("recieved action: %s", req_json['action'])
+
+        # TODO: add stop effect by eident logic
+
+    @ledd_protocol(protocol)
+    def get_effects(self, req_json):
+        """
+        Part of the Color API. Used to show all available and running effects.
+        Required JSON parameters: -
+        :param req_json: dict of request json
+        """
+        log.debug("recieved action: %s", req_json['action'])
+
+        # TODO: list all effects here and on which stripes they run atm
+        # TODO: all effects get runtime only ids, "eid"'s. They are shown here for the client to start effects.
+        # TODO: All options that an effect may have need to be transmitted here too with "eopt".
 
     @ledd_protocol(protocol)
     def set_color(self, req_json):
@@ -184,7 +225,7 @@ class Daemon:
 
         if "stripes" in req_json:
             for stripe in req_json['stripes']:
-                found_s = self.find_stripe(stripe)
+                found_s = self.find_stripe(stripe['sid'])
 
                 if found_s is None:
                     log.warning("Stripe not found: id=%s", stripe['sid'])
@@ -192,7 +233,7 @@ class Daemon:
 
                 found_s.set_color(spectra.hsv(stripe['hsv']['h'], stripe['hsv']['s'], stripe['hsv']['v']))
 
-    def find_stripe(self, jstripe):
+    def find_stripe(self, sid):
         """
         Finds a given stripeid in the currently known controllers
         :param jstripe: json containing sid
@@ -201,7 +242,7 @@ class Daemon:
         """
         for c in self.controllers:
             for s in c.stripes:
-                if s.id == jstripe['sid']:
+                if s.id == sid:
                     return s
 
         return None
@@ -251,7 +292,7 @@ class Daemon:
 
         if "stripes" in req_json:
             for stripe in req_json['stripes']:
-                found_s = self.find_stripe(stripe)
+                found_s = self.find_stripe(stripe['sid'])
 
                 if found_s is None:
                     log.warning("Stripe not found: id=%s", stripe['sid'])

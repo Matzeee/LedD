@@ -57,7 +57,7 @@ class Stripe:
     def set_color(self, c):
         self._color = c
         for channel, gamma_correct, value in zip(self.channels, self.gamma_correct, c.clamped_rgb):
-            self.controller.set_channel(channel, value * 255)
+            self.controller.set_channel(channel, value)
 
     def get_color(self):
         return self._color
