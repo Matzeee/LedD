@@ -26,6 +26,8 @@ import asyncio
 
 import spectra
 
+from zeroconf import Zeroconf, ServiceInfo
+
 from ledd import controller, VERSION
 from ledd.decorators import ledd_protocol
 from ledd.stripe import Stripe
@@ -46,6 +48,7 @@ class Daemon:
         Daemon.instance = self
 
         try:
+            # read config
             self.config = configparser.ConfigParser()
             try:
                 with open('ledd.config', 'w+') as f:
@@ -53,6 +56,11 @@ class Daemon:
             except FileNotFoundError:
                 log.info("No config file found!")
 
+            # create zeroconf service info
+            self.zinfo = ServiceInfo("_ledd._tcp", "LedD Daemon",
+                                     port=self.config.get(self.daemonSection, 'port', fallback=1425))
+
+            # SQL init
             self.sqldb = sqlite3.connect(self.config.get(self.databaseSection, 'name', fallback='ledd.sqlite'))
             self.sqldb.row_factory = sqlite3.Row
 
@@ -61,10 +69,15 @@ class Daemon:
 
             self.sqldb.commit()
 
+            # init controllers from db
             self.controllers = controller.Controller.from_db(self.sqldb)
             log.debug(self.controllers)
             logging.getLogger("asyncio").setLevel(logging.DEBUG)
 
+            # announce server to network
+            self.register_zeroconf()
+
+            # main loop
             self.loop = asyncio.get_event_loop()
             coro = self.loop.create_server(LedDProtocol,
                                            self.config.get(self.daemonSection, 'host', fallback='0.0.0.0'),
@@ -73,6 +86,7 @@ class Daemon:
             self.loop.run_forever()
         except (KeyboardInterrupt, SystemExit):
             log.info("Exiting")
+            self.deregister_zeroconf()
             self.sqldb.close()
             self.server.close()
             self.loop.run_until_complete(self.server.wait_closed())
@@ -111,6 +125,16 @@ class Daemon:
             c.executescript(sqlfile.read())
             c.close()
         self.check_db()
+
+    def register_zeroconf(self):
+        zeroconf = Zeroconf()
+        zeroconf.register_service(self.zinfo)
+        log.info("Registered ledd daemon with zeroconf")
+
+    def deregister_zeroconf(self):
+        zeroconf = Zeroconf()
+        zeroconf.unregister_service(self.zinfo)
+        log.info("Unregistered ledd daemon with zeroconf")
 
     @ledd_protocol(protocol)
     def set_color(self, req_json):
