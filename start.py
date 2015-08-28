@@ -36,8 +36,10 @@ if "smbus" not in (name for loader, name, ispkg in iter_modules()):
                 self.channels[(cmd - 8) // 4] = 0
             return self.channels[(cmd - 8) // 4]
 
+
     class SMBusModule:
         SMBus = SMBus
+
 
     import sys
 
@@ -45,10 +47,28 @@ if "smbus" not in (name for loader, name, ispkg in iter_modules()):
     sys.modules['smbus'].SMBus = SMBus
 
 import ledd.daemon
+import sys
+import os
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG,
                         format="[%(asctime)s] %(levelname)s [%(name)s.%(funcName)s:%(lineno)d] %(message)s",
                         datefmt="%H:%M:%S")
     log = logging.getLogger(__name__)
-    daemon = ledd.daemon.Daemon()
+
+    wdir = os.path.dirname(os.path.realpath(__file__))
+    try:
+        pid = os.fork()
+        if pid == 0:
+            os.setsid()
+            pid2 = os.fork()
+            if pid2 == 0:
+                os.umask(0)
+                os.chdir(wdir)
+                daemon = ledd.daemon.Daemon()
+            else:
+                sys.exit()
+        else:
+            sys.exit()
+    except OSError as e:
+        log.fatal("Forking failed: %s", os.strerror(int(str(e))))
