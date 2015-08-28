@@ -26,10 +26,11 @@ import asyncio
 
 import spectra
 
-from zeroconf import Zeroconf, ServiceInfo
+from zeroconf import Zeroconf
 
 from ledd import controller, VERSION
 from ledd.decorators import ledd_protocol
+from ledd.effectstack import EffectStack
 from ledd.stripe import Stripe
 
 log = logging.getLogger(__name__)
@@ -43,6 +44,7 @@ class Daemon:
     loop = None
     """ :type : asyncio.BaseEventLoop """
     protocol = {}
+    effects = []
 
     def __init__(self):
         Daemon.instance = self
@@ -57,8 +59,8 @@ class Daemon:
                 log.info("No config file found!")
 
             # create zeroconf service info
-            self.zinfo = ServiceInfo("_ledd._tcp", "LedD Daemon",
-                                     port=self.config.get(self.daemonSection, 'port', fallback=1425))
+            # self.zinfo = ServiceInfo("_ledd._tcp", "LedD Daemon",
+            #                         port=self.config.get(self.daemonSection, 'port', fallback=1425))
 
             # SQL init
             self.sqldb = sqlite3.connect(self.config.get(self.databaseSection, 'name', fallback='ledd.sqlite'))
@@ -75,7 +77,7 @@ class Daemon:
             logging.getLogger("asyncio").setLevel(logging.DEBUG)
 
             # announce server to network
-            self.register_zeroconf()
+            #self.register_zeroconf()
 
             # main loop
             self.loop = asyncio.get_event_loop()
@@ -134,7 +136,33 @@ class Daemon:
     def deregister_zeroconf(self):
         zeroconf = Zeroconf()
         zeroconf.unregister_service(self.zinfo)
-        log.info("Unregistered ledd daemon with zeroconf")
+
+    @ledd_protocol(protocol)
+    def start_effect(self, req_json):
+        """
+
+        :param req_json: dict of request json
+        """
+        effect = EffectStack()
+        self.effects.append(effect)
+        effect.stripes.append(self.controllers[1].stripes[0])
+        effect.start()
+
+        # asyncio.ensure_future(asyncio.get_event_loop().run_in_executor(self.executor, effect.execute))
+
+        log.debug("recieved action: %s", req_json['action'])
+
+    @ledd_protocol(protocol)
+    def start_effect(self, req_json):
+        """
+
+        :param req_json: dict of request json
+        """
+        effect = BaseEffect(Stripe(),self.loop)
+        self.effects.append(effect)
+        asyncio.ensure_future(asyncio.get_event_loop().run_in_executor(self.executor, effect.execute))
+
+        log.debug("recieved action: %s", req_json['action'])
 
     @ledd_protocol(protocol)
     def set_color(self, req_json):
