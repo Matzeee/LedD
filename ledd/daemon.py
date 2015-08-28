@@ -147,21 +147,26 @@ class Daemon:
 
         if "stripes" in req_json:
             for stripe in req_json['stripes']:
-                def find_stripe():
-                    for c in self.controllers:
-                        for s in c.stripes:
-                            if s.id == stripe['sid']:
-                                return s
-
-                    return None
-
-                found_s = find_stripe()
+                found_s = self.find_stripe(stripe)
 
                 if found_s is None:
                     log.warning("Stripe not found: id=%s", stripe['sid'])
                     continue
 
                 found_s.set_color(spectra.hsv(stripe['hsv']['h'], stripe['hsv']['s'], stripe['hsv']['v']))
+
+    def find_stripe(self, jstripe):
+        """
+        Finds a given stripeid in the currently known controllers
+        :param jstripe: json containing sid
+        :return: stripe
+        """
+        for c in self.controllers:
+            for s in c.stripes:
+                if s.id == jstripe['sid']:
+                    return s
+
+        return None
 
     @ledd_protocol(protocol)
     def add_controller(self, req_json):
