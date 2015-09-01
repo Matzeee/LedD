@@ -1,6 +1,6 @@
 # LedD
 
-[![Scrutinizer Code Quality](https://scrutinizer-ci.com/g/LED-Freaks/LedD/badges/quality-score.png?b=master)](https://scrutinizer-ci.com/g/LED-Freaks/LedD/?branch=master)
+[![Code Climate](https://codeclimate.com/github/LED-Freaks/LedD/badges/gpa.svg)](https://codeclimate.com/github/LED-Freaks/LedD)
 
 LedD is a daemon for interfacing LED stripes written in python3. It provides an abstract interface for effects to control any kind of LED stripe through an controller, although it is intented to be used with the PCA9685 chip. An Android application can connect and natively change any settings for the effects and stripes.
 
