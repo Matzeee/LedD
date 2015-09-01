@@ -15,6 +15,9 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import logging
+import ledd.daemon
+import sys
+import os
 
 from pkgutil import iter_modules
 
@@ -41,14 +44,8 @@ if "smbus" not in (name for loader, name, ispkg in iter_modules()):
         SMBus = SMBus
 
 
-    import sys
-
     sys.modules['smbus'] = SMBusModule
     sys.modules['smbus'].SMBus = SMBus
-
-import ledd.daemon
-import sys
-import os
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG,
@@ -71,4 +68,4 @@ if __name__ == "__main__":
         else:
             sys.exit()
     except OSError as e:
-        log.fatal("Forking failed: %s", os.strerror(int(str(e))))
+        log.fatal("Start failed: %s", e)

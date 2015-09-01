@@ -1,0 +1,15 @@
+<?xml version="1.0" standalone='no'?><!--*-nxml-*-->
+<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+
+<!-- Place this file in /etc/avahi/services/ for your clients to find the daemon -->
+
+<service-group>
+
+<name>LedD Daemon</name>
+
+  <service>
+    <type>_ledd._tcp</type>
+    <port>1425</port>
+  </service>
+
+</service-group>

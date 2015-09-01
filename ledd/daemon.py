@@ -23,9 +23,7 @@ import sys
 import traceback
 import time
 import asyncio
-
 import spectra
-from zeroconf import Zeroconf, ServiceInfo
 
 from ledd import controller, VERSION
 from ledd.decorators import ledd_protocol
@@ -57,10 +55,6 @@ class Daemon:
             except FileNotFoundError:
                 log.info("No config file found!")
 
-            # create zeroconf service info
-            self.zinfo = ServiceInfo("_ledd._tcp.local.", "LedD Daemon._ledd._tcp.local.",
-                                     port=self.config.get(self.daemonSection, 'port', fallback=1425))
-
             # SQL init
             self.sqldb = sqlite3.connect(self.config.get(self.databaseSection, 'name', fallback='ledd.sqlite'))
             self.sqldb.row_factory = sqlite3.Row
@@ -75,9 +69,6 @@ class Daemon:
             log.debug(self.controllers)
             logging.getLogger("asyncio").setLevel(logging.DEBUG)
 
-            # announce server to network
-            self.register_zeroconf()
-
             # main loop
             self.loop = asyncio.get_event_loop()
             coro = self.loop.create_server(LedDProtocol,
@@ -87,7 +78,6 @@ class Daemon:
             self.loop.run_forever()
         except (KeyboardInterrupt, SystemExit):
             log.info("Exiting")
-            self.deregister_zeroconf()
             self.sqldb.close()
             self.server.close()
             self.loop.run_until_complete(self.server.wait_closed())
@@ -126,24 +116,6 @@ class Daemon:
             c.executescript(sqlfile.read())
             c.close()
         self.check_db()
-
-    def register_zeroconf(self):
-        try:
-            zeroconf = Zeroconf()
-            zeroconf.register_service(self.zinfo)
-            log.info("Registered ledd daemon with zeroconf")
-        except OSError as e:
-            log.warning("Failed to register service with ZeroConf: %s", e)
-            pass
-
-    def deregister_zeroconf(self):
-        try:
-            zeroconf = Zeroconf()
-            zeroconf.unregister_service(self.zinfo)
-            log.info("Unregistered ledd daemon with zeroconf")
-        except OSError as e:
-            log.warning("Failed to deregister service with ZeroConf: %s", e)
-            pass
 
     @ledd_protocol(protocol)
     def start_effect(self, req_json):
