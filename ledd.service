@@ -8,7 +8,7 @@
 <name>LedD Daemon</name>
 
   <service>
-    <type>_ledd._tcp</type>
+    <type>_ledd._tcp.</type>
     <port>1425</port>
   </service>
 
