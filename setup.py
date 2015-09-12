@@ -21,10 +21,10 @@ setup(name='LedD',
       description='Providing control for led stripes.',
       url='https://github.com/LED-Freaks/LedD',
       author='IdleGandalf, Lauch',
-      author_email='539@idlegandalf.com',
+      author_email='ledd@idlegandalf.com',
       license='GPLv3',
       packages=['ledd'],
       install_requires=[
-            'nose', 'spectra',
+            'nose', 'spectra', 'docopt',
       ],
       zip_safe=False)

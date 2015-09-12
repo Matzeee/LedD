@@ -49,6 +49,9 @@ class Stripe:
         c = Color("rgb", rc[0], rc[1], rc[2])
         self._color = c.to("hsv")
 
+    def __repr__(self):
+        return "<Stripe id={}>".format(self.id)
+
     @classmethod
     def from_db(cls, controller, row):
         return cls(controller, name=row["name"], rgb=row["rgb"],

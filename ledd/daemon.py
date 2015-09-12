@@ -23,6 +23,8 @@ import sys
 import traceback
 import time
 import asyncio
+import signal
+
 import spectra
 
 from ledd import controller, VERSION
@@ -54,6 +56,7 @@ class Daemon:
                     self.config.read_file(f)
             except FileNotFoundError:
                 log.info("No config file found!")
+                pass
 
             # SQL init
             self.sqldb = sqlite3.connect(self.config.get(self.databaseSection, 'name', fallback='ledd.sqlite'))
@@ -67,7 +70,13 @@ class Daemon:
             # init controllers from db
             self.controllers = controller.Controller.from_db(self.sqldb)
             log.debug(self.controllers)
-            logging.getLogger("asyncio").setLevel(logging.DEBUG)
+            logging.getLogger("asyncio").setLevel(log.getEffectiveLevel())
+
+            # sigterm handler
+            def sigterm_handler(_signo, _stack_frame):
+                sys.exit(0)
+
+            signal.signal(signal.SIGTERM, sigterm_handler)
 
             # main loop
             self.loop = asyncio.get_event_loop()
@@ -78,6 +87,10 @@ class Daemon:
             self.loop.run_forever()
         except (KeyboardInterrupt, SystemExit):
             log.info("Exiting")
+            try:
+                os.remove("ledd.pid")
+            except FileNotFoundError:
+                pass
             self.sqldb.close()
             self.server.close()
             self.loop.run_until_complete(self.server.wait_closed())
@@ -208,7 +221,7 @@ class Daemon:
     def find_stripe(self, sid):
         """
         Finds a given stripeid in the currently known controllers
-        :param jstripe: json containing sid
+        :param sid stripe id
         :return: stripe if found or none
         :rtype: ledd.Stripe | None
         """
@@ -298,6 +311,7 @@ class Daemon:
         if "stripes" in req_json:
             for stripe in req_json['stripes']:
                 c = next((x for x in self.controllers if x.id == stripe['cid']), None)
+                """ :type c: ledd.controller.Controller """
 
                 if c is None:
                     res_stripes.append({
@@ -309,6 +323,9 @@ class Daemon:
 
                 s = Stripe(c, stripe['name'], stripe['rgb'],
                            (stripe['map']['r'], stripe['map']['g'], stripe['map']['b']))
+
+                c.stripes.append(s)
+                log.debug("Added stripe %s to controller %s; new len %s", c.id, s.id, len(c.stripes))
 
                 res_stripes.append({
                     'success': True,
@@ -325,9 +342,9 @@ class Daemon:
             return json.dumps(rjson)
 
     @ledd_protocol(protocol)
-    def get_controllers(self, req_json):
+    def get_stripes(self, req_json):
         """
-        Part of the Color API. Used to get all registered controllers known to the daemon.
+        Part of the Color API. Used to get all registered stripes known to the daemon.
         Required JSON parameters: none
         :param req_json: dict of request json
         """
@@ -398,17 +415,22 @@ class LedDProtocol(asyncio.Protocol):
     transport = None
 
     def connection_made(self, transport):
-        log.info("New connection from %s", transport.get_extra_info("peername"))
+        log.debug("New connection from %s", transport.get_extra_info("peername"))
         self.transport = transport
 
     def data_received(self, data):
-        log.info("Received: %s from: %s", data.decode(), self.transport.get_extra_info("peername"))
-        self.select_task(data)
+        try:
+            d_decoded = data.decode()
+        except UnicodeDecodeError:
+            log.warning("Recieved undecodable data, ignoring")
+        else:
+            log.debug("Received: %s from: %s", d_decoded, self.transport.get_extra_info("peername"))
+            self.select_task(d_decoded)
 
     def select_task(self, data):
         if data:
             try:
-                json_decoded = json.loads(data.decode())
+                json_decoded = json.loads(data)
 
                 if "action" in json_decoded and "ref" in json_decoded:
                     return_data = Daemon.instance.protocol.get(json_decoded['action'], Daemon.no_action_found)(
