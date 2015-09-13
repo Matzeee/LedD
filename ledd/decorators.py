@@ -18,8 +18,8 @@
 def ledd_protocol(proto):
     """
     Decorator used to add functions to action dict
-    :param actiondict: dict to add to
-    :type actiondict: dict
+    :param proto: dict to add to
+    :type proto: dict
     """
 
     def wrap(f):

@@ -84,11 +84,11 @@ class Controller:
         self.id = cid
         self.db = db
         self.stripes = []
-        self.load_stripes()
         self._pwm_freq = None
         self.pwm_freq = pwm_freq
         if not from_db:
             self.save_to_db()
+        self.load_stripes()
 
     def load_stripes(self):
         cur = self.db.cursor()

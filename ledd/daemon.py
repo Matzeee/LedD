@@ -21,7 +21,6 @@ import sqlite3
 import os
 import sys
 import traceback
-import time
 import asyncio
 import signal
 
@@ -208,15 +207,12 @@ class Daemon:
         """
         log.debug("recieved action: %s", req_json['action'])
 
-        if "stripes" in req_json:
-            for stripe in req_json['stripes']:
-                found_s = self.find_stripe(stripe['sid'])
+        found_s = self.find_stripe(req_json['sid'])
 
-                if found_s is None:
-                    log.warning("Stripe not found: id=%s", stripe['sid'])
-                    continue
-
-                found_s.set_color(spectra.hsv(stripe['hsv']['h'], stripe['hsv']['s'], stripe['hsv']['v']))
+        if found_s is None:
+            log.warning("Stripe not found: id=%s", req_json['sid'])
+        else:
+            found_s.set_color(spectra.hsv(req_json['hsv']['h'], req_json['hsv']['s'], req_json['hsv']['v']))
 
     def find_stripe(self, sid):
         """
@@ -245,11 +241,11 @@ class Daemon:
             ncontroller = controller.Controller(Daemon.instance.sqldb, req_json['channels'],
                                                 req_json['i2c_dev'], req_json['address'])
         except OSError as e:
-            log.error("Error opening i2c device: %s", req_json['i2c_dev'])
+            log.error("Error opening i2c device: %s (%s)", req_json['i2c_dev'], os.strerror(int(str(e))))
             rjson = {
                 'success': False,
                 'message': "Error while opening i2c device",
-                'message_detail': os.strerror(e.errno),
+                'message_detail': os.strerror(int(str(e))),
                 'ref': req_json['ref']
             }
             return json.dumps(rjson)
@@ -267,75 +263,60 @@ class Daemon:
     @ledd_protocol(protocol)
     def get_color(self, req_json):
         """
-        Part of the Color API. Used to get the currect color of an stripe.
+        Part of the Color API. Used to get the current color of an stripe.
         Required JSON parameters: stripes
         :param req_json: dict of request json
         """
         log.debug("recieved action: %s", req_json['action'])
 
-        res_stripes = []
+        found_s = self.find_stripe(req_json['sid'])
 
-        if "stripes" in req_json:
-            for stripe in req_json['stripes']:
-                found_s = self.find_stripe(stripe['sid'])
-
-                if found_s is None:
-                    log.warning("Stripe not found: id=%s", stripe['sid'])
-                    continue
-
-                res_stripes.append({
-                    'success': True,
-                    'sid': found_s.id,
-                    'color': found_s.get_color.values
-                })
-
-            rjson = {
-                'success': True,
-                'stripes': res_stripes,
+        if found_s is None:
+            log.warning("Stripe not found: id=%s", req_json['sid'])
+            return {
+                'success': False,
+                'message': "Stripe not found",
                 'ref': req_json['ref']
             }
 
-            return json.dumps(rjson)
+        rjson = {
+            'success': True,
+            'color': found_s.color.values,
+            'ref': req_json['ref']
+        }
+
+        return json.dumps(rjson)
 
     @ledd_protocol(protocol)
-    def add_stripes(self, req_json):
+    def add_stripe(self, req_json):
         """
         Part of the Color API. Used to add stripes.
-        Required JSON parameters: name; rgb: bool; map: r: r-channel, g: g-channel, b: b-channel
+        Required JSON parameters: name; rgb: bool; map: r: r-channel, g: g-channel, b: b-channel, cid
         :param req_json: dict of request json
         """
         log.debug("recieved action: %s", req_json['action'])
 
-        res_stripes = []
+        if "stripe" in req_json:
+            stripe = req_json['stripe']
+            c = next((x for x in self.controllers if x.id == stripe['cid']), None)
+            """ :type c: ledd.controller.Controller """
 
-        if "stripes" in req_json:
-            for stripe in req_json['stripes']:
-                c = next((x for x in self.controllers if x.id == stripe['cid']), None)
-                """ :type c: ledd.controller.Controller """
-
-                if c is None:
-                    res_stripes.append({
-                        'success': False,
-                        'message': "Controller not found",
-                        'ref': stripe['ref']
-                    })
-                    continue
-
-                s = Stripe(c, stripe['name'], stripe['rgb'],
-                           (stripe['map']['r'], stripe['map']['g'], stripe['map']['b']))
-
-                c.stripes.append(s)
-                log.debug("Added stripe %s to controller %s; new len %s", c.id, s.id, len(c.stripes))
-
-                res_stripes.append({
-                    'success': True,
-                    'sid': s.id,
+            if c is None:
+                return {
+                    'success': False,
+                    'message': "Controller not found",
                     'ref': stripe['ref']
-                })
+                }
+
+            s = Stripe(c, stripe['name'], stripe['rgb'],
+                       (stripe['map']['r'], stripe['map']['g'], stripe['map']['b']))
+
+            c.stripes.append(s)
+            log.debug("Added stripe %s to controller %s; new len %s", c.id, s.id, len(c.stripes))
 
             rjson = {
                 'success': True,
-                'stripes': res_stripes,
+                'sid': s.id,
                 'ref': req_json['ref']
             }
 
@@ -360,23 +341,19 @@ class Daemon:
         return json.dumps(rjson, cls=controller.ControllerEncoder)
 
     @ledd_protocol(protocol)
-    def connection_check(self, req_json):
+    def test_channel(self, req_json):
         """
-        Part of the Color API. Used to query all channels on a specified controller.
-        Required JSON parameters: controller id: cid
+        Part of the Color API. Used to test a channel on a specified controller.
+        Required JSON parameters: controller id: cid, channel, value
         :param req_json: dict of request json
         """
         log.debug("recieved action: %s", req_json['action'])
 
         result = next(filter(lambda x: x.id == req_json['cid'], self.controllers), None)
-        """ :type : Controller """
+        """ :type : ledd.controller.Controller """
 
         if result is not None:
-            for i in range(result.channels):
-                log.debug("set channel %d=%s", i, "1")
-                result.set_channel(i, 1)
-                time.sleep(10)
-                result.set_channel(i, 0)
+            result.set_channel(req_json['channel'], req_json['value'])
 
         rjson = {
             'success': True,
@@ -430,16 +407,20 @@ class LedDProtocol(asyncio.Protocol):
     def select_task(self, data):
         if data:
             try:
-                json_decoded = json.loads(data)
+                data_split = data.splitlines()
+                log.debug(data_split)
+                for line in data_split:
+                    if line:
+                        json_decoded = json.loads(line)
 
-                if "action" in json_decoded and "ref" in json_decoded:
-                    return_data = Daemon.instance.protocol.get(json_decoded['action'], Daemon.no_action_found)(
-                        Daemon.instance, json_decoded)
+                        if "action" in json_decoded and "ref" in json_decoded:
+                            return_data = Daemon.instance.protocol.get(json_decoded['action'], Daemon.no_action_found)(
+                                Daemon.instance, json_decoded)
 
-                    if return_data is not None:
-                        self.transport.write("{}\n".format(return_data).encode())
-                else:
-                    log.debug("no action or ref value found in JSON, ignoring")
+                            if return_data is not None:
+                                self.transport.write("{}\n".format(return_data).encode())
+                        else:
+                            log.debug("no action or ref value found in JSON, ignoring")
             except TypeError:
                 log.debug("No valid JSON found: %s", traceback.format_exc())
             except ValueError:
