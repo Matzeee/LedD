@@ -72,10 +72,13 @@ class Daemon:
             logging.getLogger("asyncio").setLevel(log.getEffectiveLevel())
 
             # sigterm handler
-            def sigterm_handler(_signo, _stack_frame):
+            def sigterm_handler():
                 sys.exit(0)
 
             signal.signal(signal.SIGTERM, sigterm_handler)
+
+            # init plugins
+            # TODO: check all plugins for existing hooks
 
             # main loop
             self.loop = asyncio.get_event_loop()
@@ -110,10 +113,19 @@ class Daemon:
 
             if db_version is not None:
                 log.info("DB connection established; db-version=%s", db_version[0])
+
+                if int(db_version[0]) < 2:
+                    with open("ledd/sql/upgrade_1_2.sql", "r") as ufile:
+                        u = self.sqldb.cursor()
+                        u.executescript(ufile.read())
+                        u.close()
+                        log.info("Database upgraded to version %s", 2)
+
                 return True
             else:
                 return False
-        except sqlite3.OperationalError:
+        except sqlite3.OperationalError as e:
+            log.debug("SQLite error: %s", e)
             c.close()
             return False
 
@@ -213,20 +225,6 @@ class Daemon:
             log.warning("Stripe not found: id=%s", req_json['sid'])
         else:
             found_s.set_color(spectra.hsv(req_json['hsv']['h'], req_json['hsv']['s'], req_json['hsv']['v']))
-
-    def find_stripe(self, sid):
-        """
-        Finds a given stripeid in the currently known controllers
-        :param sid stripe id
-        :return: stripe if found or none
-        :rtype: ledd.Stripe | None
-        """
-        for c in self.controllers:
-            for s in c.stripes:
-                if s.id == sid:
-                    return s
-
-        return None
 
     @ledd_protocol(protocol)
     def add_controller(self, req_json):
@@ -353,7 +351,7 @@ class Daemon:
         """ :type : ledd.controller.Controller """
 
         if result is not None:
-            result.set_channel(req_json['channel'], req_json['value'])
+            result.set_channel(req_json['channel'], req_json['value'], 2.8)
 
         rjson = {
             'success': True,
@@ -386,6 +384,20 @@ class Daemon:
             'ref': req_json['ref']
         }
         return json.dumps(rjson)
+
+    def find_stripe(self, sid):
+        """
+        Finds a given stripeid in the currently known controllers
+        :param sid stripe id
+        :return: stripe if found or none
+        :rtype: ledd.Stripe | None
+        """
+        for c in self.controllers:
+            for s in c.stripes:
+                if s.id == sid:
+                    return s
+
+        return None
 
 
 class LedDProtocol(asyncio.Protocol):

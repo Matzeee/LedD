@@ -21,14 +21,14 @@ class Stripe:
     A stripe is the smallest controllable unit.
     """
 
-    def __init__(self, controller, name, rgb, channels, sid=-1, from_db=False):
+    def __init__(self, controller, name, rgb, channels, sid=-1, gamma_correct=(2.8, 2.8, 2.8), from_db=False):
         self.controller = controller
         self.name = name
         self.rgb = bool(rgb)
         self.channels = channels
         self.id = sid
         self._color = None
-        self.gamma_correct = (2.8, 2.8, 2.8)  # TODO: add to DB
+        self.gamma_correct = gamma_correct
         self.read_color()
         if not from_db:
             self.save_to_db()
@@ -39,8 +39,16 @@ class Stripe:
             cur.execute("INSERT INTO stripes DEFAULT VALUES")
             self.id = cur.lastrowid
         cur.execute(
-            "UPDATE stripes SET channel_r = ?, channel_g = ?, channel_b = ?,controller_id = ?, name = ? WHERE id = ?",
-            self.channels + (self.controller.id, self.name, self.id))
+            "UPDATE stripes SET "
+            "channel_r_gamma = ?,"
+            "channel_g_gamma = ?,"
+            "channel_b_gamma = ?,"
+            "channel_r = ?,"
+            "channel_g = ?,"
+            "channel_b = ?,"
+            "controller_id = ?,"
+            "name = ? WHERE id = ?",
+            self.gamma_correct + self.channels + (self.controller.id, self.name, self.id))
         cur.close()
         self.controller.db.commit()
 
@@ -55,12 +63,13 @@ class Stripe:
     @classmethod
     def from_db(cls, controller, row):
         return cls(controller, name=row["name"], rgb=row["rgb"],
-                   channels=(row["channel_r"], row["channel_g"], row["channel_b"]), sid=row["id"], from_db=True)
+                   channels=(row["channel_r"], row["channel_g"], row["channel_b"]), sid=row["id"],
+                   gamma_correct=(row["channel_r_gamma"], row["channel_g_gamma"], row["channel_b_gamma"]), from_db=True)
 
     def set_color(self, c):
         self._color = c
         for channel, gamma_correct, value in zip(self.channels, self.gamma_correct, c.clamped_rgb):
-            self.controller.set_channel(channel, value)
+            self.controller.set_channel(channel, value, gamma_correct)
 
     def get_color(self):
         return self._color
