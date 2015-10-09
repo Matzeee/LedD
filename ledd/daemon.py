@@ -365,7 +365,7 @@ class LedDProtocol(asyncio.Protocol):
             log.debug(data_split)
             for line in data_split:
                 if line:
-                    self.transport.write(JSONRPCResponseManager.handle(line, dispatcher))
+                    self.transport.write(JSONRPCResponseManager.handle(line, dispatcher).json.encode())
 
     def connection_lost(self, exc):
         # The socket has been closed, stop the event loop
