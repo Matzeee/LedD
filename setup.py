@@ -25,6 +25,6 @@ setup(name='LedD',
       license='GPLv3',
       packages=['ledd'],
       install_requires=[
-            'nose', 'spectra', 'docopt',
+            'nose', 'spectra', 'docopt', 'jsonrpc',
       ],
       zip_safe=False)
