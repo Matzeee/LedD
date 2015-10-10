@@ -18,9 +18,12 @@ from json import JSONEncoder
 import logging
 import time
 
-import smbus
+from sqlalchemy import Column, Integer, String
+from sqlalchemy.orm import relationship
 
+import smbus
 from ledd.stripe import Stripe
+from . import Base
 
 PCA9685_SUBADR1 = 0x2
 PCA9685_SUBADR2 = 0x3
@@ -41,61 +44,25 @@ ALLLED_OFF_L = 0xFC
 ALLLED_OFF_H = 0xFD
 
 
-class Controller:
+class Controller(Base):
+    __tablename__ = "controller"
+
+    id = Column(Integer, primary_key=True)
+    channels = Column(Integer)
+    i2c_device = Column(Integer)
+    address = Column(String)
+    stripes = relationship("Stripe", backref="controller")
+    _pwm_freq = Column("pwm_freq", Integer)
+
     """
     A controller controls a number of stripes.
     """
 
-    @classmethod
-    def from_row(cls, db, row):
-        # load from db
-        return cls(db, pwm_freq=row["pwm_freq"], channels=row["channels"], i2c_device=row["i2c_device"],
-                   address=row["address"], cid=row["id"], from_db=True)
-
-    @staticmethod
-    def from_db(db):
-        l = []
-        cur = db.cursor()
-        for row in cur.execute("select * from controller"):
-            c = Controller.from_row(db, row)
-            l.append(c)
-        cur.close()
-        return l
-
-    def save_to_db(self):
-        cur = self.db.cursor()
-        if self.id == -1:
-            cur.execute("INSERT INTO controller (pwm_freq, channels, i2c_device, address) VALUES (?,?,?,?)",
-                        (self._pwm_freq, self.channels, self.i2c_device, self.address))
-            self.id = cur.lastrowid
-        else:
-            cur.execute("UPDATE controller SET pwm_freq=?, channels=?, i2c_device=?, address=? WHERE id = ?",
-                        (self._pwm_freq, self.channels, self.i2c_device, self.address, self.id))
-        cur.close()
-        self.db.commit()
-
-    def __init__(self, db, channels, i2c_device, address, pwm_freq=1526, cid=-1, from_db=False):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self._mode = None
-        self.channels = channels
-        self.i2c_device = i2c_device
-        self.bus = smbus.SMBus(i2c_device)
-        self.address = address
-        self._address = int(address, 16)
-        self.id = cid
-        self.db = db
-        self.stripes = []
-        self._pwm_freq = None
-        self.pwm_freq = pwm_freq
-        if not from_db:
-            self.save_to_db()
-        self.load_stripes()
-
-    def load_stripes(self):
-        cur = self.db.cursor()
-        for stripe in cur.execute("select * from stripes where controller_id = ?", (self.id,)):
-            self.stripes.append(Stripe.from_db(self, stripe))
-        logging.getLogger(__name__).debug("Loaded %s stripes for controller %s", len(self.stripes), self.id)
-        cur.close()
+        self.bus = smbus.SMBus(self.i2c_device)
+        self._address = int(self.address, 16)
 
     def __repr__(self):
         return "<Controller stripes={} cid={}>".format(len(self.stripes), self.id)
@@ -113,9 +80,6 @@ class Controller:
 
     def get_channel(self, channel):
         return self.bus.read_word_data(self._address, LED0_OFF_L + 4 * channel) / 4095
-
-    def add_stripe(self, stripe):
-        self.stripes.append(stripe)
 
     def reset(self):
         self.mode = int("0b00100001", 2)  # MODE1 -> 0b00000001

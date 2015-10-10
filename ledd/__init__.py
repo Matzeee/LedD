@@ -14,4 +14,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+from sqlalchemy.orm import sessionmaker, scoped_session
+from sqlalchemy.ext.declarative import declarative_base
+
 VERSION = "0.1"
+
+engine = None
+session = scoped_session(sessionmaker())
+""" :type : sqlalchemy.orm.scoping.scoped_session """
+Base = declarative_base()
+Base.query = session.query_property()

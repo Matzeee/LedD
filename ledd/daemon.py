@@ -17,155 +17,135 @@
 import logging
 import configparser
 import json
-import sqlite3
 import os
 import sys
 import asyncio
 import signal
 
+from sqlalchemy import create_engine
 from jsonrpc import JSONRPCResponseManager, dispatcher
-
 from jsonrpc.exceptions import JSONRPCError
 import spectra
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm.exc import NoResultFound
 
-from ledd import controller, VERSION
+from ledd import VERSION
 from ledd.effectstack import EffectStack
+from ledd.models import Meta
 from ledd.stripe import Stripe
+from ledd.controller import Controller, ControllerEncoder
+from . import Base, session
 
 log = logging.getLogger(__name__)
 
+daemonSection = 'daemon'
+databaseSection = 'db'
+loop = None
+""" :type : asyncio.BaseEventLoop """
+effects = []
 
-class Daemon:
-    daemonSection = 'daemon'
-    databaseSection = 'db'
-    instance = None
-    """:type : Daemon """
-    loop = None
-    """ :type : asyncio.BaseEventLoop """
-    effects = []
 
-    def __init__(self):
-        Daemon.instance = self
-
+def run():
+    try:
+        # read config
+        config = configparser.ConfigParser()
         try:
-            # read config
-            self.config = configparser.ConfigParser()
-            try:
-                with open('ledd.config', 'w+') as f:
-                    self.config.read_file(f)
-            except FileNotFoundError:
-                log.info("No config file found!")
-                pass
+            with open('ledd.config', 'w+') as f:
+                config.read_file(f)
+        except FileNotFoundError:
+            log.info("No config file found!")
+            pass
 
-            # SQL init
-            self.sqldb = sqlite3.connect(self.config.get(self.databaseSection, 'name', fallback='ledd.sqlite'))
-            self.sqldb.row_factory = sqlite3.Row
+        # SQL init
+        global engine
+        engine = create_engine("sqlite:///" + config.get(databaseSection, 'name', fallback='ledd.sqlite'),
+                               echo=log.getEffectiveLevel() == logging.DEBUG)
+        session.configure(bind=engine)
+        Base.metadata.bind = engine
+        if not check_db():
+            init_db()
 
-            if not self.check_db():
-                self.init_db()
+        log.debug(Controller.query.all())
+        logging.getLogger("asyncio").setLevel(log.getEffectiveLevel())
 
-            self.sqldb.commit()
+        # sigterm handler
+        def sigterm_handler():
+            raise SystemExit
 
-            # init controllers from db
-            self.controllers = controller.Controller.from_db(self.sqldb)
-            log.debug(self.controllers)
-            logging.getLogger("asyncio").setLevel(log.getEffectiveLevel())
+        signal.signal(signal.SIGTERM, sigterm_handler)
 
-            # sigterm handler
-            def sigterm_handler():
-                raise SystemExit
+        # init plugins
+        # TODO: check all plugins for existing hooks
 
-            signal.signal(signal.SIGTERM, sigterm_handler)
-
-            # init plugins
-            # TODO: check all plugins for existing hooks
-
-            # main loop
-            self.loop = asyncio.get_event_loop()
-            coro = self.loop.create_server(LedDProtocol,
-                                           self.config.get(self.daemonSection, 'host', fallback='0.0.0.0'),
-                                           self.config.get(self.daemonSection, 'port', fallback=1425))
-            self.server = self.loop.run_until_complete(coro)
-            self.loop.run_forever()
-        except (KeyboardInterrupt, SystemExit):
-            log.info("Exiting")
-            try:
-                os.remove("ledd.pid")
-            except FileNotFoundError:
-                pass
-            self.sqldb.close()
-            self.server.close()
-            self.loop.run_until_complete(self.server.wait_closed())
-            self.loop.close()
-            sys.exit(0)
-
-    def check_db(self):
-        """
-        Checks database version
-        :return: database validity
-        :rtype: bool
-        """
-        c = self.sqldb.cursor()
+        # main loop
+        global loop
+        loop = asyncio.get_event_loop()
+        coro = loop.create_server(LedDProtocol,
+                                  config.get(daemonSection, 'host', fallback='0.0.0.0'),
+                                  config.get(daemonSection, 'port', fallback=1425))
+        global server
+        server = loop.run_until_complete(coro)
+        loop.run_forever()
+    except (KeyboardInterrupt, SystemExit):
+        log.info("Exiting")
         try:
-            c.execute("SELECT value FROM meta WHERE option = 'db_version'")
-            db_version = c.fetchone()
-            c.close()
+            os.remove("ledd.pid")
+        except FileNotFoundError:
+            pass
+        # TODO: close engine?
+        if server is not None:
+            server.close()
+        if loop is not None:
+            loop.run_until_complete(server.wait_closed())
+            loop.close()
+        sys.exit(0)
 
-            if db_version is not None:
-                log.info("DB connection established; db-version=%s", db_version[0])
 
-                if int(db_version[0]) < 2:
-                    with open("ledd/sql/upgrade_1_2.sql", "r") as ufile:
-                        u = self.sqldb.cursor()
-                        u.executescript(ufile.read())
-                        u.close()
-                        log.info("Database upgraded to version %s", 2)
+def check_db():
+    """
+    Checks database version
+    :return: database validity
+    :rtype: bool
+    """
+    try:
+        db_version = Meta.get_version()
 
-                return True
-            else:
-                return False
-        except sqlite3.OperationalError as e:
-            log.debug("SQLite error: %s", e)
-            c.close()
-            return False
+        if db_version is not None:
+            log.info("DB connection established; db-version=%s", db_version)
+            return True
+    except OperationalError:
+        return False
+    return False
 
-    def init_db(self):
-        self.sqldb.close()
-        if os.path.exists("ledd.sqlite"):
-            os.remove("ledd.sqlite")
-        self.sqldb = sqlite3.connect(self.config.get(self.databaseSection, 'name', fallback='ledd.sqlite'))
-        self.sqldb.row_factory = sqlite3.Row
-        with open("ledd/sql/ledd.sql", "r") as sqlfile:
-            c = self.sqldb.cursor()
-            c.executescript(sqlfile.read())
-            c.close()
-        self.check_db()
 
-    @dispatcher.add_method
-    def start_effect(self, **kwargs):
-        """
-        Part of the Color API. Used to start a specific effect.
-        Required JSON parameters: stripe IDs: sids; effect id: eid, effect options: eopt
-        :param req_json: dict of request json
-        """
-        stripes = []
+def init_db():
+    Base.metadata.drop_all()
+    Base.metadata.create_all()
+    session.add(Meta(option="db_version", value="2"))
+    session.commit()
+    check_db()
 
-        if "sids" in kwargs:
-            for sid in kwargs['sids']:
-                found_s = self.find_stripe(sid)
 
-                if found_s is not None:
-                    stripes.append(found_s)
+@dispatcher.add_method
+def start_effect(**kwargs):
+    """
+    Part of the Color API. Used to start a specific effect.
+    Required JSON parameters: stripe IDs: sids; effect id: eid, effect options: eopt
+    :param req_json: dict of request json
+    """
 
-        if len(stripes) > 0:
+    stripes = []
+
+    if "sids" in kwargs:
+        for stripe in Stripe.query.filter(Stripe.id.in_(kwargs['sids'])):
             # TODO: add anything required to start effect with req_json['eid']
             # on stripes[] with options in req_json['eopt']
             effect = EffectStack()
-            self.effects.append(effect)
-            effect.stripes.append(self.controllers[0].stripes[0])
+            effects.append(effect)
+            effect.stripes.append(stripe)
             effect.start()
 
-            # asyncio.ensure_future(asyncio.get_event_loop().run_in_executor(self.executor, effect.execute))
+            # asyncio.ensure_future(asyncio.get_event_loop().run_in_executor(executor, effect.execute))
 
             rjson = {
                 'eident': None,  # unique effect identifier that identifies excatly this effect started on this set of
@@ -176,171 +156,175 @@ class Daemon:
         else:
             return JSONRPCError(-1003, "Stripeid not found")
 
-    @dispatcher.add_method
-    def stop_effect(self, **kwargs):
-        """
-        Part of the Color API. Used to stop a specific effect.
-        Required JSON parameters: effect identifier: eident
-        :param req_json: dict of request json
-        """
 
-        # TODO: add stop effect by eident logic
+@dispatcher.add_method
+def stop_effect(**kwargs):
+    """
+    Part of the Color API. Used to stop a specific effect.
+    Required JSON parameters: effect identifier: eident
+    :param req_json: dict of request json
+    """
 
-    @dispatcher.add_method
-    def get_effects(self, **kwargs):
-        """
-        Part of the Color API. Used to show all available and running effects.
-        Required JSON parameters: -
-        :param req_json: dict of request json
-        """
+    # TODO: add stop effect by eident logic
 
-        # TODO: list all effects here and on which stripes they run atm
-        # TODO: all effects get runtime only ids, "eid"'s. They are shown here for the client to start effects.
-        # TODO: All options that an effect may have need to be transmitted here too with "eopt".
 
-    @dispatcher.add_method
-    def set_color(self, **kwargs):
-        """
-        Part of the Color API. Used to set color of a stripe.
-        Required JSON parameters: stripe ID: sid; HSV values hsv: h,s,v, controller id: cid
-        :param req_json: dict of request json
-        """
+@dispatcher.add_method
+def get_effects(**kwargs):
+    """
+    Part of the Color API. Used to show all available and running effects.
+    Required JSON parameters: -
+    :param req_json: dict of request json
+    """
 
-        found_s = self.find_stripe(kwargs['sid'])
+    # TODO: list all effects here and on which stripes they run atm
+    # TODO: all effects get runtime only ids, "eid"'s. They are shown here for the client to start effects.
+    # TODO: All options that an effect may have need to be transmitted here too with "eopt".
 
-        if found_s is None:
-            log.warning("Stripe not found: id=%s", kwargs['sid'])
-        else:
-            found_s.set_color(spectra.hsv(kwargs['hsv']['h'], kwargs['hsv']['s'], kwargs['hsv']['v']))
 
-    @dispatcher.add_method
-    def add_controller(self, **kwargs):
-        """
-        Part of the Color API. Used to add a controller.
-        Required JSON parameters: channels; i2c_dev: number of i2c device (e.g. /dev/i2c-1 would be i2c_dev = 1);
-                                  address: hexdecimal address of controller on i2c bus, e.g. 0x40
-        :param req_json: dict of request json
-        """
-        try:
-            ncontroller = controller.Controller(Daemon.instance.sqldb, kwargs['channels'],
-                                                kwargs['i2c_dev'], kwargs['address'])
-        except OSError as e:
-            log.error("Error opening i2c device: %s (%s)", kwargs['i2c_dev'], e)
-            return JSONRPCError(-1004, "Error while opening i2c device", e)
+@dispatcher.add_method
+def set_color(**kwargs):
+    """
+    Part of the Color API. Used to set color of a stripe.
+    Required JSON parameters: stripe ID: sid; HSV values hsv: h,s,v, controller id: cid
+    :param req_json: dict of request json
+    """
+    try:
+        stripe = Stripe.query.filter(Stripe.id == kwargs['sid']).one()
+        stripe.set_color(spectra.hsv(kwargs['hsv']['h'], kwargs['hsv']['s'], kwargs['hsv']['v']))
+    except NoResultFound:
+        log.warning("Stripe not found: id=%s", kwargs['sid'])
 
-        self.controllers.append(ncontroller)
+
+@dispatcher.add_method
+def add_controller(**kwargs):
+    """
+    Part of the Color API. Used to add a controller.
+    Required JSON parameters: channels; i2c_dev: number of i2c device (e.g. /dev/i2c-1 would be i2c_dev = 1);
+                              address: hexdecimal address of controller on i2c bus, e.g. 0x40
+    :param req_json: dict of request json
+    """
+    try:
+        ncontroller = Controller(channels=int(kwargs['channels']), i2c_device=int(kwargs['i2c_dev']),
+                                 address=kwargs['address'])
+    except OSError as e:
+        log.error("Error opening i2c device: %s (%s)", kwargs['i2c_dev'], e)
+        return JSONRPCError(-1004, "Error while opening i2c device", e)
+
+    session.add(ncontroller)
+    session.commit()
+
+    rjson = {
+        'cid': ncontroller.id,
+    }
+
+    return rjson
+
+
+@dispatcher.add_method
+def get_color(**kwargs):
+    """
+    Part of the Color API. Used to get the current color of an stripe.
+    Required JSON parameters: stripes
+    :param req_json: dict of request json
+    """
+    try:
+        stripe = Stripe.query.filter(Stripe.id == kwargs['sid']).one()
+    except NoResultFound:
+        log.warning("Stripe not found: id=%s", kwargs['sid'])
+        return JSONRPCError(-1003, "Stripeid not found")
+
+    rjson = {
+        'color': stripe.color.values,
+    }
+
+    return rjson
+
+
+@dispatcher.add_method
+def add_stripe(**kwargs):
+    """
+    Part of the Color API. Used to add stripes.
+    Required JSON parameters: name; rgb: bool; map: r: r-channel, g: g-channel, b: b-channel, cid
+    :param req_json: dict of request json
+    """
+
+    if "stripe" in kwargs:
+        stripe = kwargs['stripe']
+        c = Controller.query.filter(Controller.id == int(stripe['cid'])).first()
+        """ :type c: ledd.controller.Controller """
+
+        if c is None:
+            return JSONRPCError(-1002, "Controller not found")
+
+        s = Stripe(name=stripe['name'], rgb=bool(stripe['rgb']),
+                   channel_r=stripe['map']['r'], channel_g=stripe['map']['g'], channel_b=stripe['map']['b'])
+        s.controller = c
+        log.debug("Added stripe %s to controller %s; new len %s", c.id, s.id, len(c.stripes))
 
         rjson = {
-            'cid': ncontroller.id,
+            'sid': s.id,
         }
 
         return rjson
 
-    @dispatcher.add_method
-    def get_color(self, **kwargs):
-        """
-        Part of the Color API. Used to get the current color of an stripe.
-        Required JSON parameters: stripes
-        :param req_json: dict of request json
-        """
 
-        found_s = self.find_stripe(kwargs['sid'])
+@dispatcher.add_method
+def get_stripes(**kwargs):
+    """
+    Part of the Color API. Used to get all registered stripes known to the daemon.
+    Required JSON parameters: none
+    :param req_json: dict of request json
+    """
 
-        if found_s is None:
-            log.warning("StripeId not found: id=%s", kwargs['sid'])
-            return JSONRPCError(-1003, "Stripeid not found")
+    rjson = {
+        'ccount': len(Controller.query),
+        'controller': json.dumps(Controller.query, cls=ControllerEncoder),
+    }
 
-        rjson = {
-            'color': found_s.color.values,
-        }
+    return rjson
 
-        return rjson
 
-    @dispatcher.add_method
-    def add_stripe(self, **kwargs):
-        """
-        Part of the Color API. Used to add stripes.
-        Required JSON parameters: name; rgb: bool; map: r: r-channel, g: g-channel, b: b-channel, cid
-        :param req_json: dict of request json
-        """
+@dispatcher.add_method
+def test_channel(**kwargs):
+    """
+    Part of the Color API. Used to test a channel on a specified controller.
+    Required JSON parameters: controller id: cid, channel, value
+    :param req_json: dict of request json
+    """
 
-        if "stripe" in kwargs:
-            stripe = kwargs['stripe']
-            c = next((x for x in self.controllers if x.id == stripe['cid']), None)
-            """ :type c: ledd.controller.Controller """
+    result = Controller.query.filter(Controller.id == kwargs['cid']).first()
+    """ :type : ledd.controller.Controller """
 
-            if c is None:
-                return JSONRPCError(-1002, "Controller not found")
+    if result is not None:
+        result.set_channel(kwargs['channel'], kwargs['value'], 2.8)
 
-            s = Stripe(c, stripe['name'], stripe['rgb'],
-                       (stripe['map']['r'], stripe['map']['g'], stripe['map']['b']))
 
-            c.stripes.append(s)
-            log.debug("Added stripe %s to controller %s; new len %s", c.id, s.id, len(c.stripes))
+@dispatcher.add_method
+def discover(**kwargs):
+    """
+    Part of the Color API. Used by mobile applications to find the controller.
+    Required JSON parameters: none
+    :param req_json: dict of request json
+    """
+    log.debug("recieved action: %s", kwargs['action'])
 
-            rjson = {
-                'sid': s.id,
-            }
+    rjson = {
+        'version': VERSION
+    }
 
-            return rjson
+    return rjson
 
-    @dispatcher.add_method
-    def get_stripes(self, **kwargs):
-        """
-        Part of the Color API. Used to get all registered stripes known to the daemon.
-        Required JSON parameters: none
-        :param req_json: dict of request json
-        """
 
-        rjson = {
-            'ccount': len(Daemon.instance.controllers),
-            'controller': json.dumps(Daemon.instance.controllers, cls=controller.ControllerEncoder),
-        }
+def find_stripe(sid):
+    """
+    Deprecated. Use a query instead. Or this should be moved to a classmethod in Stripe
+    Finds a given stripeid in the currently known controllers
+    :param sid stripe id
+    :return: stripe if found or none
+    :rtype: ledd.Stripe | None
+    """
 
-        return rjson
-
-    @dispatcher.add_method
-    def test_channel(self, **kwargs):
-        """
-        Part of the Color API. Used to test a channel on a specified controller.
-        Required JSON parameters: controller id: cid, channel, value
-        :param req_json: dict of request json
-        """
-
-        result = next(filter(lambda x: x.id == kwargs['cid'], self.controllers), None)
-        """ :type : ledd.controller.Controller """
-
-        if result is not None:
-            result.set_channel(kwargs['channel'], kwargs['value'], 2.8)
-
-    @dispatcher.add_method
-    def discover(self, **kwargs):
-        """
-        Part of the Color API. Used by mobile applications to find the controller.
-        Required JSON parameters: none
-        :param req_json: dict of request json
-        """
-        log.debug("recieved action: %s", kwargs['action'])
-
-        rjson = {
-            'version': VERSION
-        }
-
-        return rjson
-
-    def find_stripe(self, sid):
-        """
-        Finds a given stripeid in the currently known controllers
-        :param sid stripe id
-        :return: stripe if found or none
-        :rtype: ledd.Stripe | None
-        """
-        for c in self.controllers:
-            for s in c.stripes:
-                if s.id == sid:
-                    return s
-
-        return None
+    return Stripe.query.filter(Stripe.id == sid).first()
 
 
 class LedDProtocol(asyncio.Protocol):

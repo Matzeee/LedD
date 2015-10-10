@@ -14,17 +14,16 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from setuptools import setup
+from sqlalchemy import String, Column
 
-setup(name='LedD',
-      version='0.1',
-      description='Providing control for led stripes.',
-      url='https://github.com/LED-Freaks/LedD',
-      author='IdleGandalf, Lauch',
-      author_email='ledd@idlegandalf.com',
-      license='GPLv3',
-      packages=['ledd'],
-      install_requires=[
-            'nose', 'spectra', 'docopt', 'jsonrpc', 'sqlalchemy',
-      ],
-      zip_safe=False)
+from . import Base
+
+
+class Meta(Base):
+    __tablename__ = "meta"
+    option = Column(String, primary_key=True)
+    value = Column(String)
+
+    @classmethod
+    def get_version(cls):
+        return cls.query.filter(Meta.option == "db_version").first()

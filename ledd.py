@@ -36,9 +36,6 @@ from pkgutil import iter_modules
 
 from docopt import docopt
 
-import ledd.daemon
-import ledd
-
 if "smbus" not in (name for loader, name, ispkg in iter_modules()):
     print("smbus not found, installing replacement")
 
@@ -64,6 +61,9 @@ if "smbus" not in (name for loader, name, ispkg in iter_modules()):
 
     sys.modules['smbus'] = SMBusModule
     sys.modules['smbus'].SMBus = SMBus
+
+import ledd.daemon
+import ledd
 
 
 def pid_exists(processid):
@@ -118,7 +118,7 @@ if __name__ == "__main__":
                     os.chdir(wdir)
                     with open("ledd.pid", 'w') as pidf:
                         pidf.write(str(os.getpid()) + '\n')
-                    daemon = ledd.daemon.Daemon()
+                    ledd.daemon.run()
                 else:
                     sys.exit()
             else:
@@ -126,4 +126,4 @@ if __name__ == "__main__":
         except OSError as e:
             log.fatal("Start failed: %s", e)
     else:
-        daemon = ledd.daemon.Daemon()
+        ledd.daemon.run()

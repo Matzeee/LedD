@@ -13,44 +13,42 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 from spectra import Color
+from sqlalchemy import Integer, ForeignKey, String, Float, Boolean
+from sqlalchemy import Column
+
+from . import Base
 
 
-class Stripe:
+class Stripe(Base):
+    __tablename__ = "stripe"
     """
     A stripe is the smallest controllable unit.
     """
+    id = Column(Integer, primary_key=True)
+    controller_id = Column(Integer, ForeignKey('controller.id'))
+    name = Column(String)
+    channel_r = Column(Integer)
+    channel_g = Column(Integer)
+    channel_b = Column(Integer)
+    channel_r_gamma = Column(Float, default=2.8)
+    channel_g_gamma = Column(Float, default=2.8)
+    channel_b_gamma = Column(Float, default=2.8)
+    rgb = Column(Boolean)
 
-    def __init__(self, controller, name, rgb, channels, sid=-1, gamma_correct=(2.8, 2.8, 2.8), from_db=False):
-        self.controller = controller
-        self.name = name
-        self.rgb = bool(rgb)
-        self.channels = channels
-        self.id = sid
-        self._color = None
-        self.gamma_correct = gamma_correct
-        self.read_color()
-        if not from_db:
-            self.save_to_db()
+    @property
+    def channels(self):
+        return self.channel_r, self.channel_b, self.channel_g
 
-    def save_to_db(self):
-        cur = self.controller.db.cursor()
-        if self.id == -1:
-            cur.execute("INSERT INTO stripes DEFAULT VALUES")
-            self.id = cur.lastrowid
-        cur.execute(
-            "UPDATE stripes SET "
-            "channel_r_gamma = ?,"
-            "channel_g_gamma = ?,"
-            "channel_b_gamma = ?,"
-            "channel_r = ?,"
-            "channel_g = ?,"
-            "channel_b = ?,"
-            "controller_id = ?,"
-            "name = ? WHERE id = ?",
-            self.gamma_correct + self.channels + (self.controller.id, self.name, self.id))
-        cur.close()
-        self.controller.db.commit()
+    # TODO save channels to db
+
+    @channels.setter
+    def channels(self, t):
+        self.channel_r, self.channel_g, self.channel_b = t
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
     def read_color(self):
         rc = tuple([float(self.controller.get_channel(channel)) for channel in self.channels])
@@ -59,12 +57,6 @@ class Stripe:
 
     def __repr__(self):
         return "<Stripe id={}>".format(self.id)
-
-    @classmethod
-    def from_db(cls, controller, row):
-        return cls(controller, name=row["name"], rgb=row["rgb"],
-                   channels=(row["channel_r"], row["channel_g"], row["channel_b"]), sid=row["id"],
-                   gamma_correct=(row["channel_r_gamma"], row["channel_g_gamma"], row["channel_b_gamma"]), from_db=True)
 
     def set_color(self, c):
         self._color = c
