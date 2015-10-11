@@ -16,7 +16,6 @@
 
 import logging
 import configparser
-import json
 import os
 import sys
 import asyncio
@@ -27,13 +26,14 @@ from jsonrpc import JSONRPCResponseManager, dispatcher
 from jsonrpc.exceptions import JSONRPCError, JSONRPCInvalidParams
 import spectra
 from sqlalchemy.exc import OperationalError
+
 from sqlalchemy.orm.exc import NoResultFound
 
 from ledd import VERSION
 from ledd.effectstack import EffectStack
 from ledd.models import Meta
 from ledd.stripe import Stripe
-from ledd.controller import Controller, ControllerEncoder
+from ledd.controller import Controller
 from . import Base, session
 
 log = logging.getLogger(__name__)
@@ -191,6 +191,9 @@ def set_color(**kwargs):
         stripe.set_color(spectra.hsv(kwargs['hsv']['h'], kwargs['hsv']['s'], kwargs['hsv']['v']))
     except NoResultFound:
         log.warning("Stripe not found: id=%s", kwargs['sid'])
+        return JSONRPCError(-1003, "Stripeid not found")
+
+    return ""
 
 
 @dispatcher.add_method
@@ -255,7 +258,9 @@ def add_stripe(**kwargs):
     s = Stripe(name=kwargs['name'], rgb=bool(kwargs['rgb']),
                channel_r=kwargs['map']['r'], channel_g=kwargs['map']['g'], channel_b=kwargs['map']['b'])
     s.controller = c
-    log.debug("Added stripe %s to controller %s; new len %s", c.id, s.id, len(c.stripes))
+    log.debug("Added stripe %s to controller %s; new len %s", s.id, c.id, len(c.stripes))
+
+    session.commit()
 
     return {'sid': s.id}
 
@@ -268,8 +273,8 @@ def get_stripes(**kwargs):
     """
 
     rjson = {
-        'ccount': len(Controller.query),
-        'controller': json.dumps(Controller.query, cls=ControllerEncoder),
+        'ccount': len(Controller.query.all()),
+        'controller': Controller.query.all()
     }
 
     return rjson
@@ -292,6 +297,8 @@ def test_channel(**kwargs):
         result.set_channel(kwargs['channel'], kwargs['value'], 2.8)
     else:
         return JSONRPCError(-1002, "Controller not found")
+
+    return ""
 
 
 @dispatcher.add_method

@@ -17,15 +17,16 @@
 from spectra import Color
 from sqlalchemy import Integer, ForeignKey, String, Float, Boolean
 from sqlalchemy import Column
+from sqlalchemy.orm import reconstructor
 
 from . import Base
 
 
 class Stripe(Base):
-    __tablename__ = "stripe"
     """
     A stripe is the smallest controllable unit.
     """
+    __tablename__ = "stripe"
     id = Column(Integer, primary_key=True)
     controller_id = Column(Integer, ForeignKey('controller.id'))
     name = Column(String)
@@ -39,7 +40,7 @@ class Stripe(Base):
 
     @property
     def channels(self):
-        return self.channel_r, self.channel_b, self.channel_g
+        return self.channel_r, self.channel_g, self.channel_b
 
     # TODO save channels to db
 
@@ -49,11 +50,21 @@ class Stripe(Base):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._color = None
+        self.gamma_correct = (self.channel_r_gamma, self.channel_g_gamma, self.channel_b_gamma)
+        self.read_color()
+
+    @reconstructor
+    def init_on_load(self):
+        self._color = None
+        self.gamma_correct = (self.channel_r_gamma, self.channel_g_gamma, self.channel_b_gamma)
+        self.read_color()
 
     def read_color(self):
-        rc = tuple([float(self.controller.get_channel(channel)) for channel in self.channels])
-        c = Color("rgb", rc[0], rc[1], rc[2])
-        self._color = c.to("hsv")
+        if self.controller:
+            rc = tuple([float(self.controller.get_channel(channel)) for channel in self.channels])
+            c = Color("rgb", rc[0], rc[1], rc[2])
+            self._color = c.to("hsv")
 
     def __repr__(self):
         return "<Stripe id={}>".format(self.id)
@@ -65,5 +76,13 @@ class Stripe(Base):
 
     def get_color(self):
         return self._color
+
+    def to_json(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'rgb': self.rgb,
+            'channel': self.channels
+        }
 
     color = property(get_color, set_color)

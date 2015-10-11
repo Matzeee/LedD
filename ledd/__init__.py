@@ -13,6 +13,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
+from json import JSONEncoder
 
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.ext.declarative import declarative_base
@@ -24,3 +25,11 @@ session = scoped_session(sessionmaker())
 """ :type : sqlalchemy.orm.scoping.scoped_session """
 Base = declarative_base()
 Base.query = session.query_property()
+
+
+def _default(self, obj):
+    return getattr(obj.__class__, "to_json", _default.default)(obj)
+
+
+_default.default = JSONEncoder().default
+JSONEncoder.default = _default

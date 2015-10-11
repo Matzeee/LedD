@@ -14,15 +14,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from json import JSONEncoder
 import logging
 import time
 
 from sqlalchemy import Column, Integer, String
-from sqlalchemy.orm import relationship
-
+from sqlalchemy.orm import relationship, reconstructor
 import smbus
-from ledd.stripe import Stripe
+
 from . import Base
 
 PCA9685_SUBADR1 = 0x2
@@ -60,6 +58,12 @@ class Controller(Base):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._mode = None
+        self.bus = smbus.SMBus(self.i2c_device)
+        self._address = int(self.address, 16)
+
+    @reconstructor
+    def init_on_load(self):
         self._mode = None
         self.bus = smbus.SMBus(self.i2c_device)
         self._address = int(self.address, 16)
@@ -115,24 +119,14 @@ class Controller(Base):
         self.reset()
         self._pwm_freq = value
 
-
-class ControllerEncoder(JSONEncoder):
-    def default(self, o):
-        if isinstance(o, Controller):
-            return {
-                'id': o.id,
-                'pwm_freq': o.pwm_freq,
-                'channel': o.channels,
-                'address': o.address,
-                'stripes': o.stripes,
-                'cstripes': len(o.stripes),
-                'i2c_device': o.i2c_device,
-                'mode': o.mode
-            }
-        elif isinstance(o, Stripe):
-            return {
-                'id': o.id,
-                'name': o.name,
-                'rgb': o.rgb,
-                'channel': o.channels
-            }
+    def to_json(self):
+        return {
+            'id': self.id,
+            'pwm_freq': self.pwm_freq,
+            'channel': self.channels,
+            'address': self.address,
+            'stripes': self.stripes,
+            'cstripes': len(self.stripes),
+            'i2c_device': self.i2c_device,
+            'mode': self.mode
+        }
