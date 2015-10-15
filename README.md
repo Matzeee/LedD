@@ -18,6 +18,14 @@ LedD is a daemon for interfacing LED stripes written in python3. It provides an 
     - PCA9685
 - __Note__: Plugins can have different permission requirements
 
+## Installation
+
+Make sure your i2c devices are available (modprobe i2c-dev) before you follow these steps.
+
+1. `apt-get install python3-pip python3-cffi python3-docopt python3-nose python3-sqlalchemy python-smbus`
+2. `pip3 install coloredlogs spectra json-rpc cffi smbus-cffi`
+3. `adduser $USER i2c`
+
 ### Plugins & Effects
 
 Plugin functionality is planned as we provide APIs for effects and plugins to use. Here are some we are going to provide when they are finished.
