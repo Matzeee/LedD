@@ -25,6 +25,6 @@ setup(name='LedD',
       license='GPLv3',
       packages=['ledd'],
       install_requires=[
-            'nose', 'spectra', 'docopt', 'jsonrpc', 'sqlalchemy',
+            'nose', 'spectra', 'docopt', 'jsonrpc', 'sqlalchemy', 'coloredlogs'
       ],
       zip_safe=False)

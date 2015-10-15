@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 # LEDD Project
 # Copyright (C) 2015 LEDD Team
 #
@@ -17,16 +19,16 @@
 """LedD Daemon
 
 Usage:
-  ledd.py [--daemon] [-d | --debug] [-v | --verbose]
+  ledd.py [--detach] [-d | --debug] [-v | --verbose]
   ledd.py -h | --help
   ledd.py --version
 
 Options:
   -h --help         Show this screen.
   --version         Show version.
-  -d --debug        Show debug output. (not recommended for daily use)
+  -d --debug        Show debug output. (not recommended)
   -v --verbose      Be verbose.
-  --daemon          Run in daemon mode.
+  --detach          Detach after start.
 """
 
 import logging
@@ -34,7 +36,11 @@ import sys
 import os
 from pkgutil import iter_modules
 
+import coloredlogs
 from docopt import docopt
+
+import ledd.daemon
+import ledd
 
 if "smbus" not in (name for loader, name, ispkg in iter_modules()):
     print("smbus not found, installing replacement")
@@ -62,9 +68,6 @@ if "smbus" not in (name for loader, name, ispkg in iter_modules()):
     sys.modules['smbus'] = SMBusModule
     sys.modules['smbus'].SMBus = SMBus
 
-import ledd.daemon
-import ledd
-
 
 def pid_exists(processid):
     if processid < 0:
@@ -89,10 +92,8 @@ if __name__ == "__main__":
     if arguments['--debug']:
         lvl = logging.DEBUG
 
-    logging.basicConfig(level=lvl,
-                        format="[%(asctime)s] %(levelname)s [%(name)s.%(funcName)s:%(lineno)d] %(message)s",
-                        datefmt="%H:%M:%S")
     log = logging.getLogger(__name__)
+    coloredlogs.install(level=lvl)
 
     try:
         with open('ledd.pid', 'r') as f:
@@ -106,7 +107,7 @@ if __name__ == "__main__":
     except FileNotFoundError:
         pass
 
-    if arguments['--daemon']:
+    if arguments['--detach']:
         wdir = os.path.dirname(os.path.realpath(__file__))
         try:
             pid = os.fork()

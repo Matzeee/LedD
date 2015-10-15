@@ -26,7 +26,6 @@ from jsonrpc import JSONRPCResponseManager, dispatcher
 from jsonrpc.exceptions import JSONRPCError, JSONRPCInvalidParams
 import spectra
 from sqlalchemy.exc import OperationalError
-
 from sqlalchemy.orm.exc import NoResultFound
 
 from ledd import VERSION
@@ -42,6 +41,8 @@ daemonSection = 'daemon'
 databaseSection = 'db'
 """ :type : asyncio.BaseEventLoop """
 effects = []
+stripes = []
+controller = []
 
 
 def run():
@@ -66,6 +67,13 @@ def run():
         log.debug(Controller.query.all())
         logging.getLogger("asyncio").setLevel(log.getEffectiveLevel())
 
+        # Load to cache
+        global controller, stripes
+        controller = Controller.query.all()
+
+        for c in controller:
+            stripes.extend(c.stripes)
+
         # sigterm handler
         def sigterm_handler():
             raise SystemExit
@@ -76,13 +84,13 @@ def run():
         # TODO: check all plugins for existing hooks
 
         # main loop
-        global loop
+        global loop, server
         loop = asyncio.get_event_loop()
         coro = loop.create_server(LedDProtocol,
                                   config.get(daemonSection, 'host', fallback='0.0.0.0'),
                                   config.get(daemonSection, 'port', fallback=1425))
-        global server
         server = loop.run_until_complete(coro)
+        log.info("Start phase finished; starting main loop")
         loop.run_forever()
     except (KeyboardInterrupt, SystemExit):
         log.info("Exiting")
@@ -90,7 +98,8 @@ def run():
             os.remove("ledd.pid")
         except FileNotFoundError:
             pass
-        # TODO: close engine?
+        session.commit()
+        session.close()
         if server is not None:
             server.close()
         if loop is not None:
@@ -109,7 +118,7 @@ def check_db():
         db_version = Meta.get_version()
 
         if db_version is not None:
-            log.info("DB connection established; db-version=%s", db_version)
+            log.info("DB connection established; db_version=%s", db_version)
             return True
     except OperationalError:
         return False
@@ -186,12 +195,35 @@ def set_color(**kwargs):
     if "sid" not in kwargs or "hsv" not in kwargs:
         return JSONRPCInvalidParams()
 
-    try:
-        stripe = Stripe.query.filter(Stripe.id == kwargs['sid']).one()
+    stripe = get_stripe(kwargs['sid'])
+
+    if stripe:
         stripe.set_color(spectra.hsv(kwargs['hsv']['h'], kwargs['hsv']['s'], kwargs['hsv']['v']))
-    except NoResultFound:
+    else:
         log.warning("Stripe not found: id=%s", kwargs['sid'])
         return JSONRPCError(-1003, "Stripeid not found")
+
+    return ""
+
+
+@dispatcher.add_method
+def set_color_all(**kwargs):
+    """
+    Part of the Color API. Used to set brightness of all stripes a controller owns.
+    Required parameters: controller id: cid, value: v
+    """
+
+    if "cid" not in kwargs or "v" not in kwargs:
+        return JSONRPCInvalidParams()
+
+    try:
+        c = get_controller(kwargs['cid'])
+        """ :type c: ledd.controller.Controller """
+
+        c.set_all_channel(kwargs['v'])
+    except NoResultFound:
+        log.warning("Controller not found: id=%s", kwargs['cid'])
+        return JSONRPCError(-1002, "Controller not found")
 
     return ""
 
@@ -217,6 +249,8 @@ def add_controller(**kwargs):
     session.add(ncontroller)
     session.commit()
 
+    controller.append(ncontroller)
+
     return {'cid': ncontroller.id}
 
 
@@ -230,9 +264,9 @@ def get_color(**kwargs):
     if "sid" not in kwargs:
         return JSONRPCInvalidParams()
 
-    try:
-        stripe = Stripe.query.filter(Stripe.id == kwargs['sid']).one()
-    except NoResultFound:
+    stripe = get_stripe(kwargs['sid'])
+
+    if not stripe:
         log.warning("Stripe not found: id=%s", kwargs['sid'])
         return JSONRPCError(-1003, "Stripeid not found")
 
@@ -249,10 +283,11 @@ def add_stripe(**kwargs):
     if "name" not in kwargs or "rgb" not in kwargs or "map" not in kwargs or "cid" not in kwargs:
         return JSONRPCInvalidParams()
 
-    c = Controller.query.filter(Controller.id == int(kwargs['cid'])).first()
+    c = get_controller(kwargs['cid'])
     """ :type c: ledd.controller.Controller """
 
     if c is None:
+        log.warning("Controller not found: id=%s", kwargs['cid'])
         return JSONRPCError(-1002, "Controller not found")
 
     s = Stripe(name=kwargs['name'], rgb=bool(kwargs['rgb']),
@@ -260,7 +295,9 @@ def add_stripe(**kwargs):
     s.controller = c
     log.debug("Added stripe %s to controller %s; new len %s", s.id, c.id, len(c.stripes))
 
+    session.add(s)
     session.commit()
+    stripes.append(s)
 
     return {'sid': s.id}
 
@@ -273,8 +310,8 @@ def get_stripes(**kwargs):
     """
 
     rjson = {
-        'ccount': len(Controller.query.all()),
-        'controller': Controller.query.all()
+        'ccount': len(controller),
+        'controller': controller
     }
 
     return rjson
@@ -290,11 +327,11 @@ def test_channel(**kwargs):
     if "cid" not in kwargs or "channel" not in kwargs or "value" not in kwargs:
         return JSONRPCInvalidParams()
 
-    result = Controller.query.filter(Controller.id == kwargs['cid']).first()
+    contr = get_controller(kwargs['cid'])
     """ :type : ledd.controller.Controller """
 
-    if result is not None:
-        result.set_channel(kwargs['channel'], kwargs['value'], 2.8)
+    if contr is not None:
+        contr.set_channel(kwargs['channel'], kwargs['value'], 2.8)
     else:
         return JSONRPCError(-1002, "Controller not found")
 
@@ -309,6 +346,18 @@ def discover(**kwargs):
     """
 
     return {'version': VERSION}
+
+
+def get_stripe(sid):
+    for s in stripes:
+        if s.id == sid:
+            return s
+
+
+def get_controller(cid):
+    for c in controller:
+        if c.id == cid:
+            return c
 
 
 class LedDProtocol(asyncio.Protocol):

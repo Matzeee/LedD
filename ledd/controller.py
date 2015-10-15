@@ -76,6 +76,10 @@ class Controller(Base):
                                                                                              4095))
         self.bus.write_word_data(self._address, LED0_ON_L + 4 * channel, 0)
 
+    def set_all_channel(self, val):
+        self.bus.write_word_data(self._address, ALLLED_OFF_L, int(val * 4095))
+        self.bus.write_word_data(self._address, ALLLED_ON_L, 0)
+
     @staticmethod
     def gamma_correct(gamma, val, maxval):
         corrected = int(pow(float(val) / float(maxval), float(gamma)) * float(maxval) + 0.5)
