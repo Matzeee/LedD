@@ -16,6 +16,7 @@
 
 import logging
 import time
+import errno
 
 from sqlalchemy import Column, Integer, String
 from sqlalchemy.orm import relationship, reconstructor
@@ -87,7 +88,13 @@ class Controller(Base):
         return corrected
 
     def get_channel(self, channel):
-        return self.bus.read_word_data(self._address, LED0_OFF_L + 4 * channel) / 4095
+        try:
+            return self.bus.read_word_data(self._address, LED0_OFF_L + 4 * channel) / 4095
+        except OSError as e:
+            if int(e) == errno.ECOMM:
+                return 0
+            else:
+                raise
 
     def reset(self):
         self.mode = int("0b00100001", 2)  # MODE1 -> 0b00000001

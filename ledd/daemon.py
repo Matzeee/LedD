@@ -20,6 +20,7 @@ import os
 import sys
 import asyncio
 import signal
+import errno
 
 from sqlalchemy import create_engine
 from jsonrpc import JSONRPCResponseManager, dispatcher
@@ -64,7 +65,6 @@ def run():
         if not check_db():
             init_db()
 
-        log.debug(Controller.query.all())
         logging.getLogger("asyncio").setLevel(log.getEffectiveLevel())
 
         # Load to cache
@@ -198,7 +198,14 @@ def set_color(**kwargs):
     stripe = get_stripe(kwargs['sid'])
 
     if stripe:
-        stripe.set_color(spectra.hsv(kwargs['hsv']['h'], kwargs['hsv']['s'], kwargs['hsv']['v']))
+        try:
+            stripe.set_color(spectra.hsv(kwargs['hsv']['h'], kwargs['hsv']['s'], kwargs['hsv']['v']))
+        except OSError as e:
+            logging.debug("got into except, errno %s", int(e))
+            if int(e) == errno.ECOMM:
+                return e
+            else:
+                raise
     else:
         log.warning("Stripe not found: id=%s", kwargs['sid'])
         return JSONRPCError(-1003, "Stripeid not found")
@@ -373,13 +380,11 @@ class LedDProtocol(asyncio.Protocol):
         except UnicodeDecodeError:
             log.warning("Recieved undecodable data, ignoring")
         else:
-            log.debug("Received: %s from: %s", d_decoded, self.transport.get_extra_info("peername"))
             self.select_task(d_decoded)
 
     def select_task(self, data):
         if data:
             data_split = data.splitlines()
-            log.debug(data_split)
             for line in data_split:
                 if line:
                     self.transport.write(JSONRPCResponseManager.handle(line, dispatcher).json.encode())
