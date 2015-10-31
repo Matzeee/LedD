@@ -201,7 +201,6 @@ def set_color(**kwargs):
         try:
             stripe.set_color(spectra.hsv(kwargs['hsv']['h'], kwargs['hsv']['s'], kwargs['hsv']['v']))
         except OSError as e:
-            logging.debug("got into except, errno %s", int(e))
             if int(e) == errno.ECOMM:
                 return e
             else:
