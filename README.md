@@ -22,9 +22,10 @@ LedD is a daemon for interfacing LED stripes written in python3. It provides an 
 
 Make sure your i2c devices are available (modprobe i2c-dev) before you follow these steps.
 
-1. `apt-get install python3-pip python3-cffi python3-docopt python3-nose python3-sqlalchemy python-smbus`
-2. `pip3 install coloredlogs spectra json-rpc cffi smbus-cffi`
-3. `adduser $USER i2c`
+1. `apt-get install python3-dev python3-pip python3-cffi python3-docopt python3-nose python3-sqlalchemy python-smbus libffi-dev`
+2. `pip3 install -U cffi` (fixes a bug where smbus-cffi can't install)
+3. `pip3 install coloredlogs spectra json-rpc smbus-cffi`
+4. `adduser $USER i2c`
 
 ### Plugins & Effects
 
