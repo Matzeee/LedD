@@ -57,9 +57,15 @@ class Controller(Base):
     A controller controls a number of stripes.
     """
 
-    @reconstructor
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._mode = None
+        self.bus = smbus.SMBus(self.i2c_device)
+        self._address = int(self.address, 16)
+        self.pwm_freq = self._pwm_freq
+
+    @reconstructor
+    def init_on_load(self):
         self._mode = None
         self.bus = smbus.SMBus(self.i2c_device)
         self._address = int(self.address, 16)
