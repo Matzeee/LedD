@@ -51,7 +51,7 @@ class Controller(Base):
     i2c_device = Column(Integer)
     address = Column(String)
     stripes = relationship("Stripe", backref="controller")
-    _pwm_freq = Column("pwm_freq", Integer)
+    _pwm_freq = Column("pwm_freq", Integer, default=1526)
 
     """
     A controller controls a number of stripes.
@@ -63,10 +63,7 @@ class Controller(Base):
         self._mode = None
         self.bus = smbus.SMBus(self.i2c_device)
         self._address = int(self.address, 16)
-        if self._pwm_freq:
-            self.pwm_freq = self._pwm_freq
-        else:
-            self.pwm_freq = 1526
+        self.pwm_freq = self._pwm_freq
 
     def __repr__(self):
         return "<Controller stripes={} cid={}>".format(len(self.stripes), self.id)
