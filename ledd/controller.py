@@ -51,25 +51,22 @@ class Controller(Base):
     i2c_device = Column(Integer)
     address = Column(String)
     stripes = relationship("Stripe", backref="controller")
-    pwm_freq = Column("pwm_freq", Integer)
+    _pwm_freq = Column("pwm_freq", Integer)
 
     """
     A controller controls a number of stripes.
     """
 
+    @reconstructor
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._mode = None
         self.bus = smbus.SMBus(self.i2c_device)
         self._address = int(self.address, 16)
-        self._pwm_freq = self.pwm_freq
-
-    @reconstructor
-    def init_on_load(self):
-        self._mode = None
-        self.bus = smbus.SMBus(self.i2c_device)
-        self._address = int(self.address, 16)
-        self._pwm_freq = self.pwm_freq
+        if self._pwm_freq:
+            self.pwm_freq = self._pwm_freq
+        else:
+            self.pwm_freq = 1526
 
     def __repr__(self):
         return "<Controller stripes={} cid={}>".format(len(self.stripes), self.id)

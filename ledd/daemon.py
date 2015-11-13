@@ -388,7 +388,10 @@ class LedDProtocol(asyncio.Protocol):
         except UnicodeDecodeError:
             log.warning("Recieved undecodable data, ignoring")
         else:
-            self.select_task(d_decoded)
+            try:
+                self.select_task(d_decoded)
+            except JSONRPCError:
+                log.warning("Recieved non-json data, ignoring")
 
     def select_task(self, data):
         if data:
