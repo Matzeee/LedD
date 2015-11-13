@@ -281,7 +281,11 @@ def get_color(**kwargs):
         log.warning("Stripe not found: id=%s", kwargs['sid'])
         return JSONRPCError(-1003, "Stripeid not found")
 
-    return {'color': stripe.color.values}
+    if stripe.color:
+        return {'color': stripe.color.values}
+    else:
+        log.warning("Stripe has no color: id=%s", kwargs['sid'])
+        return JSONRPCError(-1009, "Internal Error")
 
 
 @dispatcher.add_method
