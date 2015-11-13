@@ -252,7 +252,7 @@ def add_controller(**kwargs):
 
     try:
         ncontroller = Controller(channels=int(kwargs['channels']), i2c_device=int(kwargs['i2c_dev']),
-                                 address=kwargs['address'])
+                                 address=kwargs['address'], pwm_freq=1526)
     except OSError as e:
         log.error("Error opening i2c device: %s (%s)", kwargs['i2c_dev'], e)
         return JSONRPCError(-1004, "Error while opening i2c device", e)
