@@ -14,26 +14,26 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import logging
-import configparser
-import os
-import sys
 import asyncio
-import signal
+import configparser
 import errno
+import logging
+import os
+import signal
+import sys
 
-from sqlalchemy import create_engine
+import spectra
 from jsonrpc import JSONRPCResponseManager, dispatcher
 from jsonrpc.exceptions import JSONRPCError, JSONRPCInvalidParams
-import spectra
+from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm.exc import NoResultFound
 
 from ledd import VERSION
+from ledd.controller import Controller
 from ledd.effectstack import EffectStack
 from ledd.models import Meta
 from ledd.stripe import Stripe
-from ledd.controller import Controller
 from . import Base, session
 
 log = logging.getLogger(__name__)
@@ -94,6 +94,10 @@ def run():
         loop.run_forever()
     except (KeyboardInterrupt, SystemExit):
         log.info("Exiting")
+
+        for c in controller:
+            c.close()
+
         try:
             os.remove("ledd.pid")
         except FileNotFoundError:
@@ -138,6 +142,7 @@ def start_effect(**kwargs):
     """
     Part of the Color API. Used to start a specific effect.
     Required parameters: stripe IDs: sids; effect id: eid, effect options: eopt
+    :param kwargs:
     """
 
     if "sids" not in kwargs or "eid" not in kwargs or "eopt" not in kwargs:

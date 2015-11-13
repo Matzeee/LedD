@@ -14,13 +14,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import errno
 import logging
 import time
-import errno
 
+import smbus
 from sqlalchemy import Column, Integer, String
 from sqlalchemy.orm import relationship, reconstructor
-import smbus
 
 from . import Base
 
@@ -51,7 +51,7 @@ class Controller(Base):
     i2c_device = Column(Integer)
     address = Column(String)
     stripes = relationship("Stripe", backref="controller")
-    _pwm_freq = Column("pwm_freq", Integer)
+    pwm_freq = Column("pwm_freq", Integer)
 
     """
     A controller controls a number of stripes.
@@ -62,12 +62,14 @@ class Controller(Base):
         self._mode = None
         self.bus = smbus.SMBus(self.i2c_device)
         self._address = int(self.address, 16)
+        self._pwm_freq = self.pwm_freq
 
     @reconstructor
     def init_on_load(self):
         self._mode = None
         self.bus = smbus.SMBus(self.i2c_device)
         self._address = int(self.address, 16)
+        self._pwm_freq = self.pwm_freq
 
     def __repr__(self):
         return "<Controller stripes={} cid={}>".format(len(self.stripes), self.id)
@@ -141,3 +143,6 @@ class Controller(Base):
             'i2c_device': self.i2c_device,
             'mode': self.mode
         }
+
+    def close(self):
+        self.bus.close()
