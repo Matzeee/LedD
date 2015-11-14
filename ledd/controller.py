@@ -117,7 +117,7 @@ class Controller(Base):
 
     @property
     def pwm_freq(self):
-        self._pwm_freq = (self.bus.read_byte_data(self._address, PCA9685_PRESCALE) + 1) / 4096 * 25000000
+        self._pwm_freq = round(390625 / ((self.bus.read_byte_data(self._address, PCA9685_PRESCALE) + 1) * 64))
         return self._pwm_freq
 
     @pwm_freq.setter

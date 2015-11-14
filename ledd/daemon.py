@@ -207,6 +207,7 @@ def set_color(**kwargs):
             stripe.set_color(spectra.hsv(kwargs['hsv']['h'], kwargs['hsv']['s'], kwargs['hsv']['v']))
         except OSError as e:
             if int(e) == errno.ECOMM:
+                log.warning("Communication error on I2C Bus")
                 return e
             else:
                 raise
@@ -252,7 +253,7 @@ def add_controller(**kwargs):
 
     try:
         ncontroller = Controller(channels=int(kwargs['channels']), i2c_device=int(kwargs['i2c_dev']),
-                                 address=kwargs['address'], pwm_freq=1526)
+                                 address=kwargs['address'], _pwm_freq=1526)
     except OSError as e:
         log.error("Error opening i2c device: %s (%s)", kwargs['i2c_dev'], e)
         return JSONRPCError(-1004, "Error while opening i2c device", e)
@@ -346,7 +347,10 @@ def test_channel(**kwargs):
     """ :type : ledd.controller.Controller """
 
     if contr is not None:
-        contr.set_channel(kwargs['channel'], kwargs['value'], 2.8)
+        try:
+            contr.set_channel(kwargs['channel'], kwargs['value'], 2.8)
+        except OSError as e:
+            return JSONRPCError(-1009, "Internal Error", e)
     else:
         return JSONRPCError(-1002, "Controller not found")
 
@@ -388,17 +392,17 @@ class LedDProtocol(asyncio.Protocol):
         except UnicodeDecodeError:
             log.warning("Recieved undecodable data, ignoring")
         else:
-            try:
-                self.select_task(d_decoded)
-            except JSONRPCError:
-                log.warning("Recieved non-json data, ignoring")
+            self.select_task(d_decoded)
 
     def select_task(self, data):
         if data:
             data_split = data.splitlines()
             for line in data_split:
                 if line:
-                    self.transport.write(JSONRPCResponseManager.handle(line, dispatcher).json.encode())
+                    try:
+                        self.transport.write(JSONRPCResponseManager.handle(line, dispatcher).json.encode())
+                    except TypeError as te:
+                        log.warning("Can't send response: %s", te)
 
     def connection_lost(self, exc):
         log.info("Lost connection to %s", self.transport.get_extra_info("peername"))
